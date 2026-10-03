@@ -647,6 +647,14 @@
      * @param {string} animType - Selected animation preset name (e.g. 'spring-gentle', 'elastic').
      * @returns {string} The cubic-bezier function string.
      */
+    #syncBarAnimVars() {
+      const ms = Core.getPref(Constants.Apps.PREF_ANIMATION_SPEED);
+      const type = Core.getPref(Constants.Apps.PREF_ANIMATION_TYPE);
+      const root = document.documentElement;
+      root.style.setProperty("--zentral-anim-ms", (ms > 0 ? ms : 300) + "ms");
+      root.style.setProperty("--zentral-anim-ease", this.#getEasingBezier(type));
+    }
+
     #getEasingBezier(animType) {
       switch (animType) {
         case "spring-gentle": return "cubic-bezier(0.175, 0.885, 0.32, 1.275)";
@@ -3327,6 +3335,8 @@
       this.#state.isPinned = false;
       this.#state.isExpanded = false;
       document.documentElement.setAttribute("zentral-app-panel-open", "true");
+      document.documentElement.setAttribute("zentral-vb-expanded", "true");
+      this.#syncBarAnimVars();
       this.setAutohideHovered(true);
       this.#state.preExpandWidth = null;
       if(this.#dom.pinBtn) this.#dom.pinBtn.setAttribute("data-pinned", "false");
@@ -3413,7 +3423,8 @@
       this.#state.activeAppId = null;
       this.#state.isPinned = false;
       document.documentElement.removeAttribute("zentral-app-panel-open");
-      if (this.#dom.grid && !this.#dom.grid.matches(":hover")) {
+      this.#syncBarAnimVars();
+      if (this.isPlacementVerticalBar() || (this.#dom.grid && !this.#dom.grid.matches(":hover"))) {
         this.setAutohideHovered(false);
       }
       
@@ -3433,6 +3444,7 @@
       if (animType === "none" || slideMs <= 0) {
         this.#dom.panel.style.transition = "none";
         this.#dom.panel.style.transform = slideTo;
+        document.documentElement.removeAttribute("zentral-vb-expanded");
         if (this.#dom.root) {
           this.#dom.root.removeAttribute("open");
           this.#dom.root.removeAttribute("closing");
@@ -3447,6 +3459,7 @@
       
       this.#state.closeTimerId = setTimeout(() => {
         this.#state.closeTimerId = null;
+        document.documentElement.removeAttribute("zentral-vb-expanded");
         if (this.#dom.root) {
           this.#dom.root.removeAttribute("open");
           this.#dom.root.removeAttribute("closing");
