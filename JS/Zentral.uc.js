@@ -1,4 +1,3 @@
-
 // ==UserScript==
 // @name           Zentral
 // @description    Unified Apps Grid and Tabs Groups
@@ -1660,19 +1659,6 @@
           transition: background-image 0.25s ease !important;
         }
 
-        /* Zen Film Grain Texture Layer */
-        :root[zentral-apps-autohide="true"][zentral-apps-placement="vertical-bar"] #zentral-apps-vertical-bar::after {
-          content: "" !important;
-          position: absolute !important;
-          inset: 0 !important;
-          z-index: -1 !important;
-          border-radius: inherit !important;
-          background-image: url("chrome://browser/content/zen-images/grain-bg.png") !important;
-          background-repeat: repeat !important;
-          opacity: 0.7 !important;
-          pointer-events: none !important;
-        }
-
         /* Autohide Mode B: Position on Left (Sidebar on Right) */
         :root[zentral-apps-autohide="true"][zentral-apps-placement="vertical-bar"][zen-right-side="true"] #zentral-apps-vertical-bar,
         :root[zentral-apps-autohide="true"][zentral-apps-placement="vertical-bar"][zen-sidebar-right="true"] #zentral-apps-vertical-bar {
@@ -2525,9 +2511,6 @@
           bgEl = document.createElement("div");
           bgEl.id = "zentral-apps-vertical-bar-bg";
           bgEl.className = "zen-toolbar-background zen-browser-generic-background";
-          const grain = document.createElement("div");
-          grain.className = "zen-browser-grain";
-          bgEl.appendChild(grain);
           vb.insertBefore(bgEl, vb.firstChild);
         }
 
@@ -2570,7 +2553,7 @@
           settingsBtn = document.createElement("button");
           settingsBtn.id = "zentral-apps-vb-settings-btn";
           settingsBtn.className = "zen-app-tile zen-app-vb-footer-btn";
-          settingsBtn.title = "Zentral Settings";
+          settingsBtn.title = "bzenital Settings";
           settingsBtn.appendChild(this.#createSVG(SVG_STRINGS.SETTINGS));
           settingsBtn.addEventListener("click", (e) => {
             e.stopPropagation();
@@ -2858,7 +2841,7 @@
         btn.id = "zentral-utility-settings-btn";
         btn.className = "zen-app-tile zentral-utility-btn";
         btn.dataset.utilityKey = "settings";
-        btn.title = "Zentral Settings";
+        btn.title = "bzenital Settings";
         btn.appendChild(this.#createSVG(SVG_STRINGS.SETTINGS));
         btn.addEventListener("click", (e) => {
           e.stopPropagation();
@@ -2910,7 +2893,7 @@
             btn.id = "zentral-utility-settings-btn";
             btn.className = "zen-app-tile zentral-utility-btn";
             btn.dataset.utilityKey = "settings";
-            btn.title = "Zentral Settings";
+            btn.title = "bzenital Settings";
             btn.draggable = true;
             btn.appendChild(this.#createSVG(SVG_STRINGS.SETTINGS));
             btn.addEventListener("click", (e) => {
@@ -4056,9 +4039,6 @@
         bgEl = document.createElement("div");
         bgEl.id = "zentral-apps-vertical-bar-bg";
         bgEl.className = "zen-toolbar-background zen-browser-generic-background";
-        const grain = document.createElement("div");
-        grain.className = "zen-browser-grain";
-        bgEl.appendChild(grain);
         vb.insertBefore(bgEl, vb.firstChild);
       }
 
@@ -4091,12 +4071,12 @@
         if (tbOldGrad && tbOldGrad !== "none" && !tbOldGrad.startsWith("light-dark")) {
           bgEl.style.setProperty("--zen-main-browser-background-toolbar-old", tbOldGrad);
         }
-        if (grainOpacity) bgEl.style.setProperty("--zen-grainy-background-opacity", grainOpacity);
+        bgEl.style.setProperty("--zen-grainy-background-opacity", "0");
         if (bgOpacity) bgEl.style.setProperty("--zen-background-opacity", bgOpacity);
 
         const showGrain = zenTb.getAttribute("zen-show-grainy-background");
         if (showGrain) {
-          bgEl.setAttribute("zen-show-grainy-background", showGrain);
+          bgEl.setAttribute("zen-show-grainy-background", "false");
         }
       }
 
@@ -4113,12 +4093,12 @@
         if (bbOldGrad && bbOldGrad !== "none" && !bbOldGrad.startsWith("light-dark")) {
           bgEl.style.setProperty("--zen-main-browser-background-toolbar-old", bbOldGrad);
         }
-        if (grainOpacity) bgEl.style.setProperty("--zen-grainy-background-opacity", grainOpacity);
+        bgEl.style.setProperty("--zen-grainy-background-opacity", "0");
         if (bgOpacity) bgEl.style.setProperty("--zen-background-opacity", bgOpacity);
 
         const showGrain = zenBb.getAttribute("zen-show-grainy-background");
         if (showGrain) {
-          bgEl.setAttribute("zen-show-grainy-background", showGrain);
+          bgEl.setAttribute("zen-show-grainy-background", "false");
         }
       }
 
@@ -4135,8 +4115,8 @@
                 bgEl.style.setProperty("--zen-main-browser-background-toolbar", grad);
               }
               if (theme.texture !== undefined) {
-                bgEl.style.setProperty("--zen-grainy-background-opacity", theme.texture);
-                bgEl.setAttribute("zen-show-grainy-background", theme.texture > 0 ? "true" : "false");
+                bgEl.style.setProperty("--zen-grainy-background-opacity", "0");
+                bgEl.setAttribute("zen-show-grainy-background", "false");
               }
             }
           } catch (_) {}
@@ -4246,7 +4226,7 @@
           </menu>
           <menuseparator id="zen-apps-sidebar-sec2-sep"/>
           <menuitem id="zen-apps-sidebar-autohide-item" type="checkbox" label="Autohide Apps"/>
-          <menuitem id="zen-apps-sidebar-settings-item" label="Zentral Settings"/>
+          <menuitem id="zen-apps-sidebar-settings-item" label="bzenital Settings"/>
           <menuseparator id="zen-apps-sidebar-sec3-sep"/>
           <menuitem id="zen-apps-sidebar-remove-item" label="Remove App"/>
         </menupopup>`);
@@ -4265,7 +4245,7 @@
         const sec2Sep = document.createXULElement("menuseparator"); sec2Sep.id = "zen-apps-sidebar-sec2-sep";
 
         const autohideItem = document.createXULElement("menuitem"); autohideItem.id = "zen-apps-sidebar-autohide-item"; autohideItem.setAttribute("label", "Autohide Apps"); autohideItem.setAttribute("type", "checkbox");
-        const settingsItem = document.createXULElement("menuitem"); settingsItem.id = "zen-apps-sidebar-settings-item"; settingsItem.setAttribute("label", "Zentral Settings");
+        const settingsItem = document.createXULElement("menuitem"); settingsItem.id = "zen-apps-sidebar-settings-item"; settingsItem.setAttribute("label", "bzenital Settings");
         const sec3Sep = document.createXULElement("menuseparator"); sec3Sep.id = "zen-apps-sidebar-sec3-sep";
 
         const removeMenuItem = document.createXULElement("menuitem"); removeMenuItem.id = "zen-apps-sidebar-remove-item"; removeMenuItem.setAttribute("label", "Remove App");
@@ -8804,7 +8784,7 @@
    */
 
   /**
-   * Zentral Settings Module
+   * bzenital Settings Module
    * Manages the preferences modal dialog UI, form controls, and options persistence.
    */
   class ZentralSettings {
@@ -10853,7 +10833,7 @@
       const htmlStr = `
         <div class="zs-header">
           <div class="zs-title-group">
-            <h2 class="zs-title">Zentral Settings</h2>
+            <h2 class="zs-title">bzenital Settings</h2>
             <span class="zs-version-badge">v1.0.2</span>
           </div>
           <div class="zs-header-actions">
@@ -11994,14 +11974,14 @@
     TabGroups,
     Settings,
     Init: () => {
-      Core.log("Zentral", "Booting Master Script (v1.0.2)...");
+      Core.log("bzenital", "Booting Master Script (v1.0.2)...");
       Apps.init();
       TabGroups.init();
       Settings.init();
       window.ZentralSettingsInstance = Settings;
     },
     Destroy: () => {
-      Core.log("Zentral", "Unloading and destroying Zentral mod...");
+      Core.log("bzenital", "Unloading and destroying bzenital mod...");
       if (Apps.destroy) Apps.destroy();
       if (TabGroups.destroy) TabGroups.destroy();
       if (Settings.destroy) Settings.destroy();
