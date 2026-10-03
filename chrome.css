@@ -2766,12 +2766,20 @@ panel[id*="tabgroup-editor"] {
   background-position: right top !important;
 }
 
-/* Grain removed: no film grain anywhere inside Zentral elements */
-#zentral-apps-vertical-bar .zen-browser-grain,
-#zentral-apps-vertical-bar-bg .zen-browser-grain,
-#zentral-apps-vertical-bar :is(.zen-browser-grain, [class*="grain"]) {
+/* Grain removed: no film grain anywhere inside the mod */
+:is(#zentral-apps-vertical-bar, #zentral-apps-vertical-bar-bg, [id^="zentral-"], [class*="zentral-"]) :is(.zen-browser-grain, [class*="grain"]) {
   display: none !important;
   opacity: 0 !important;
+  background-image: none !important;
+}
+
+#zentral-apps-vertical-bar,
+#zentral-apps-vertical-bar-bg {
+  --zen-grainy-background-opacity: 0 !important;
+}
+
+#zentral-apps-vertical-bar::after,
+#zentral-apps-vertical-bar-bg::after {
   background-image: none !important;
 }
 
