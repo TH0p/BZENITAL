@@ -84,12 +84,12 @@
         promptService.alert(
           window,
           "Zentral Diagnostics — Inactive",
-          "Diagnostic Logging is currently disabled.\n\nTo capture and export diagnostic logs, please enable 'Enable Diagnostic Logging' in Zentral Settings first."
+          "Diagnostic Logging is currently disabled.\n\nTo capture and export diagnostic logs, please enable 'Enable Diagnostic Logging' in bzenital Settings first."
         );
         return;
       }
     } catch (_) {}
-    alert("Diagnostic Logging is disabled.\nPlease enable 'Enable Diagnostic Logging' in Zentral Settings to export logs.");
+    alert("Diagnostic Logging is disabled.\nPlease enable 'Enable Diagnostic Logging' in bzenital Settings to export logs.");
   }
 
   function formatElementSelector(el) {
