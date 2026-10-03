@@ -16,7 +16,7 @@
     }
   },
   "author": "Michele501st",
-  "version": "1.0",
+  "version": "1.1",
   "preferences": "preferences.json",
   "tags": ["apps", "tabs", "sidebar", "groups"],
   "fork": ["zen"],
