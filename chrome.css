@@ -3700,30 +3700,36 @@ html:root:not(#bz1):not(#bz2) .zen-app-add-btn:hover {
   opacity: 1 !important;
 }
 
-/* Apps Bar: compact + vertically centered while idle; full height while an app is open */
-html:root[zentral-apps-placement="vertical-bar"]:not([zentral-apps-autohide="true"]):not([zentral-vb-expanded="true"]) #zentral-apps-vertical-bar {
-  height: fit-content !important;
-  min-height: 0 !important;
+/* Apps Bar: compact + vertically centered while idle; grows to full height when an app opens.
+   Height is animated with the SAME duration as the panel (--zentral-anim-ms), and the attribute
+   flips in the same frame as the panel slide, both on open and on close, so it's one animation. */
+html:root[zentral-apps-placement="vertical-bar"]:not([zentral-apps-autohide="true"]) #zentral-apps-vertical-bar {
   align-self: center !important;
   margin-top: 0 !important;
   margin-bottom: 0 !important;
+  min-height: 0 !important;
+  height: var(--zentral-vb-compact-h, fit-content) !important;
+  transition: width 0.22s cubic-bezier(0.25, 1, 0.5, 1),
+              opacity 0.18s ease,
+              height var(--zentral-anim-ms, 300ms) var(--zentral-anim-ease-bar, cubic-bezier(0.22, 1, 0.36, 1)) !important;
 }
 
-html:root[zentral-apps-autohide="true"][zentral-apps-placement="vertical-bar"]:not([zentral-vb-expanded="true"]) #zentral-apps-vertical-bar {
-  top: 0 !important;
-  bottom: 0 !important;
-  height: fit-content !important;
+html:root[zentral-apps-placement="vertical-bar"]:not([zentral-apps-autohide="true"])[zentral-vb-expanded="true"] #zentral-apps-vertical-bar {
+  height: calc(100% - var(--zen-element-separation, 8px) * 2) !important;
+}
+
+/* Autohide (floating) variant: same idea, animating top + height */
+html:root[zentral-apps-autohide="true"][zentral-apps-placement="vertical-bar"] #zentral-apps-vertical-bar {
+  top: calc((100vh - var(--zentral-vb-compact-h, 0px)) / 2) !important;
+  bottom: auto !important;
+  height: var(--zentral-vb-compact-h, fit-content) !important;
   max-height: calc(100vh - 24px) !important;
-  margin-block: auto !important;
+  margin-block: 0 !important;
 }
 
-html:root[zentral-apps-placement="vertical-bar"]:not([zentral-vb-expanded="true"]) #zentral-apps-vertical-bar #zen-apps-sidebar-grid {
-  height: auto !important;
-  flex: 0 1 auto !important;
-}
-
-html:root[zentral-apps-placement="vertical-bar"]:not([zentral-vb-expanded="true"]) #zentral-apps-vertical-bar-footer {
-  margin-top: 0 !important;
+html:root[zentral-apps-autohide="true"][zentral-apps-placement="vertical-bar"][zentral-vb-expanded="true"] #zentral-apps-vertical-bar {
+  top: var(--zentral-vb-top, 12px) !important;
+  height: calc(100vh - var(--zentral-vb-top, 12px) - 12px) !important;
 }
 
 /* Autohide Apps Bar motion: softer, springier entrance; exit shares the panel's duration/easing */
@@ -3738,6 +3744,8 @@ html:root[zentral-apps-autohide="true"][zentral-apps-placement="vertical-bar"] #
   transform: translateX(var(--zbz-hide-x)) scale(0.94) !important;
   opacity: 0 !important;
   transition:
+    top var(--zentral-anim-ms, 300ms) var(--zentral-anim-ease-bar, cubic-bezier(0.22, 1, 0.36, 1)),
+    height var(--zentral-anim-ms, 300ms) var(--zentral-anim-ease-bar, cubic-bezier(0.22, 1, 0.36, 1)),
     transform var(--zentral-anim-ms, 280ms) var(--zentral-anim-ease, cubic-bezier(0.22, 1, 0.36, 1)),
     opacity calc(var(--zentral-anim-ms, 280ms) * 0.8) ease-in,
     visibility 0s linear var(--zentral-anim-ms, 280ms) !important;
@@ -3747,6 +3755,8 @@ html:root[zentral-apps-autohide="true"][zentral-apps-placement="vertical-bar"] #
   transform: translateX(0) scale(1) !important;
   opacity: 1 !important;
   transition:
+    top var(--zentral-anim-ms, 300ms) var(--zentral-anim-ease-bar, cubic-bezier(0.22, 1, 0.36, 1)),
+    height var(--zentral-anim-ms, 300ms) var(--zentral-anim-ease-bar, cubic-bezier(0.22, 1, 0.36, 1)),
     transform 460ms cubic-bezier(0.34, 1.32, 0.64, 1),
     opacity 220ms ease-out,
     visibility 0s linear 0s !important;
