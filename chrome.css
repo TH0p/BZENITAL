@@ -3781,3 +3781,17 @@ html:root[zentral-apps-autohide="true"][zentral-apps-placement="vertical-bar"]:i
 
 /* Apps Bar footer is empty when it has no "+" button: don't reserve space for it */
 #zentral-apps-vertical-bar-footer:empty { display: none !important; }
+
+
+/* Panel + Apps Bar leave together as one shape: same px shift, duration and easing as the panel.
+   No scale or early fade, so the bar stays a rigid part of the panel until it's off-screen. */
+html:root[zentral-unit-closing="true"][zentral-apps-autohide="true"][zentral-apps-placement="vertical-bar"] #zentral-apps-vertical-bar:not([data-revealed="true"]):not([zentral-app-panel-open="true"]) {
+  transform: translateX(var(--zentral-unit-shift, 0px)) !important;
+  opacity: 1 !important;
+  transition:
+    top var(--zentral-anim-ms, 300ms) var(--zentral-anim-ease-bar, cubic-bezier(0.22, 1, 0.36, 1)),
+    height var(--zentral-anim-ms, 300ms) var(--zentral-anim-ease-bar, cubic-bezier(0.22, 1, 0.36, 1)),
+    transform var(--zentral-anim-ms, 280ms) var(--zentral-anim-ease, cubic-bezier(0.22, 1, 0.36, 1)),
+    opacity 0s linear var(--zentral-anim-ms, 280ms),
+    visibility 0s linear var(--zentral-anim-ms, 280ms) !important;
+}
