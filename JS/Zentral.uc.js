@@ -2573,44 +2573,9 @@
           footer.id = "zentral-apps-vertical-bar-footer";
         }
 
-        let autohideBtn = footer.querySelector("#zentral-apps-vb-autohide-btn");
-        if (!autohideBtn) {
-          autohideBtn = document.createElement("button");
-          autohideBtn.id = "zentral-apps-vb-autohide-btn";
-          autohideBtn.className = "zen-app-tile zen-app-vb-footer-btn";
-          autohideBtn.title = Core.getPref(Constants.Apps.PREF_AUTOHIDE, false) === true ? "Disable Autohide" : "Enable Autohide";
-          autohideBtn.appendChild(this.#createSVG(SVG_STRINGS.EYE_OPEN));
-          autohideBtn.appendChild(this.#createSVG(SVG_STRINGS.EYE_CLOSED));
-          autohideBtn.addEventListener("click", (e) => {
-            e.stopPropagation();
-            const cur = Core.getPref(Constants.Apps.PREF_AUTOHIDE, false) === true;
-            const next = !cur;
-            Core.setPref(Constants.Apps.PREF_AUTOHIDE, next);
-            this.updateAutohideState();
-          });
-          autohideBtn.addEventListener("mousedown", (e) => {
-            if (e.button === 0) e.stopPropagation();
-          });
-          footer.appendChild(autohideBtn);
-        }
-
-        let settingsBtn = footer.querySelector("#zentral-apps-vb-settings-btn");
-        if (!settingsBtn) {
-          settingsBtn = document.createElement("button");
-          settingsBtn.id = "zentral-apps-vb-settings-btn";
-          settingsBtn.className = "zen-app-tile zen-app-vb-footer-btn";
-          settingsBtn.title = "bzenital Settings";
-          settingsBtn.appendChild(this.#createSVG(SVG_STRINGS.SETTINGS));
-          settingsBtn.addEventListener("click", (e) => {
-            e.stopPropagation();
-            if (window.Zentral?.Settings) window.Zentral.Settings.open();
-            else if (window.ZentralSettingsInstance) window.ZentralSettingsInstance.open();
-          });
-          settingsBtn.addEventListener("mousedown", (e) => {
-            if (e.button === 0) e.stopPropagation();
-          });
-          footer.appendChild(settingsBtn);
-        }
+        // Footer hide/settings buttons were removed on purpose; the footer only hosts the "+" button on overflow.
+        footer.querySelectorAll("#zentral-apps-vb-autohide-btn, #zentral-apps-vb-settings-btn").forEach(el => el.remove());
+        const autohideBtn = null, settingsBtn = null;
 
         if (footer.parentNode !== vb) {
           vb.appendChild(footer);
