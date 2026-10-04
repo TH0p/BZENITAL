@@ -3795,3 +3795,9 @@ html:root[zentral-unit-closing="true"][zentral-apps-autohide="true"][zentral-app
     opacity 0s linear var(--zentral-anim-ms, 280ms),
     visibility 0s linear var(--zentral-anim-ms, 280ms) !important;
 }
+
+
+/* Settings icon at the end of the Apps Bar: only while an app is open */
+html:root:not([zentral-app-panel-open]) #zentral-apps-vb-settings-btn { display: none !important; }
+html:root:not([zentral-app-panel-open]) #zentral-apps-vertical-bar-footer:not(:has(> :not(#zentral-apps-vb-settings-btn))) { display: none !important; }
+html:root[zentral-app-panel-open] #zentral-apps-vertical-bar-footer { margin-top: auto !important; }
