@@ -672,7 +672,7 @@
         const cs = getComputedStyle(vb);
         const grid = this.#dom.grid;
         const footer = document.getElementById("zentral-apps-vertical-bar-footer");
-        const parts = [grid, footer].filter(el => el && el.parentNode === vb && el.offsetHeight > 0);
+        const parts = [grid, footer].filter(el => el && el.parentNode === vb);
         if (!parts.length) return;
         let total = num(cs.paddingTop) + num(cs.paddingBottom) + num(cs.rowGap) * (parts.length - 1);
         for (const el of parts) {
@@ -686,7 +686,7 @@
           }
         }
         total = Math.ceil(total);
-        if (total > 0 && vb.dataset.compactH !== String(total)) {
+        if (total >= 60 && vb.dataset.compactH !== String(total)) {
           vb.dataset.compactH = String(total);
           vb.style.setProperty("--zentral-vb-compact-h", total + "px");
         }
