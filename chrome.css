@@ -3777,3 +3777,7 @@ html:root[zentral-apps-autohide="true"][zentral-apps-placement="vertical-bar"] #
 html:root[zentral-apps-autohide="true"][zentral-apps-placement="vertical-bar"]:is([zen-right-side="true"], [zen-sidebar-right="true"]) #zentral-apps-vertical-bar {
   transform-origin: left center;
 }
+
+
+/* Apps Bar footer is empty when it has no "+" button: don't reserve space for it */
+#zentral-apps-vertical-bar-footer:empty { display: none !important; }
