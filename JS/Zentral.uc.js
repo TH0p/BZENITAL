@@ -814,7 +814,7 @@
      * Uses staggered delays to prevent startup performance hits.
      */
     async preloadAppsSequence() {
-      const preloadedApps = this.#state.apps.filter(a => a.preload === true);
+      const preloadedApps = this.#state.apps.filter((a, i) => i === 0 || a.preload === true); // first app (WhatsApp) always runs in background
       for (const app of preloadedApps) {
         const { browser, isNew } = this.getOrCreateAppBrowser(app);
         if (isNew) {
@@ -3565,6 +3565,8 @@
       if (this.#state.activeAppId === appId) {
         this.closePanel();
       }
+      // The first app stays loaded in the background so its notifications keep coming in
+      if (this.#state.apps[0] && this.#state.apps[0].id === appId) return;
       const browser = this.#state.appBrowsers.get(appId);
       if (browser) {
         try {
@@ -3703,12 +3705,27 @@
     ensureBadgeSyncLoop() {
       if (this._badgeSyncLoopTimer) return;
       this._badgeSyncLoopTimer = setInterval(() => {
+        const first = this.#state.apps[0];
+        const fb = first && this.#state.appBrowsers.get(first.id);
+        if (first && (!fb || !fb.isConnected)) this.#keepFirstAppAlive(first);
         if (!this.#state.appBrowsers || this.#state.appBrowsers.size === 0) {
           this.stopBadgeSyncLoop();
           return;
         }
         this.syncAllAppBadges();
       }, 1500);
+    }
+
+    #keepFirstAppAlive(app) {
+      try {
+        const { browser, isNew } = this.getOrCreateAppBrowser(app);
+        if (!isNew) return;
+        browser.style.display = "none";
+        const uri = Services.io.newURI(app.url);
+        const principal = Services.scriptSecurityManager.createContentPrincipal(uri, {});
+        if (typeof browser.fixupAndLoadURIString === "function") browser.fixupAndLoadURIString(app.url, { triggeringPrincipal: principal });
+        else browser.loadURI(uri, { triggeringPrincipal: principal });
+      } catch (e) { console.error("[ZentralApps] Failed to keep first app alive:", e); }
     }
 
     /**
