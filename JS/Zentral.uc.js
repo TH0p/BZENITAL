@@ -651,8 +651,46 @@
       const ms = Core.getPref(Constants.Apps.PREF_ANIMATION_SPEED);
       const type = Core.getPref(Constants.Apps.PREF_ANIMATION_TYPE);
       const root = document.documentElement;
-      root.style.setProperty("--zentral-anim-ms", (ms > 0 ? ms : 300) + "ms");
+      const noAnim = type === "none" || !(ms > 0);
+      root.style.setProperty("--zentral-anim-ms", noAnim ? "0ms" : ms + "ms");
       root.style.setProperty("--zentral-anim-ease", this.#getEasingBezier(type));
+      // Height can't overshoot (it would go past the window / below content), so spring-like
+      // presets use the smooth curve for the bar. Duration is identical to the panel's.
+      const overshoots = ["spring-gentle", "spring-bouncy", "spring-snappy", "elastic"].includes(type);
+      root.style.setProperty("--zentral-anim-ease-bar", overshoots ? "cubic-bezier(0.22, 1, 0.36, 1)" : this.#getEasingBezier(type));
+    }
+
+    /**
+     * Measures the natural (compact) height of the Apps Bar from its children, without touching
+     * its styles, and publishes it as --zentral-vb-compact-h so CSS can animate compact <-> full height.
+     */
+    #syncVbCompactHeight() {
+      const vb = this.#dom.verticalBar;
+      if (!vb || !this.isPlacementVerticalBar()) return;
+      try {
+        const num = (v) => parseFloat(v) || 0;
+        const cs = getComputedStyle(vb);
+        const grid = this.#dom.grid;
+        const footer = document.getElementById("zentral-apps-vertical-bar-footer");
+        const parts = [grid, footer].filter(el => el && el.parentNode === vb && el.offsetHeight > 0);
+        if (!parts.length) return;
+        let total = num(cs.paddingTop) + num(cs.paddingBottom) + num(cs.rowGap) * (parts.length - 1);
+        for (const el of parts) {
+          if (el === grid) {
+            const gcs = getComputedStyle(grid);
+            const kids = [...grid.children].filter(c => c.offsetHeight > 0 && getComputedStyle(c).position !== "absolute");
+            total += num(gcs.paddingTop) + num(gcs.paddingBottom) + num(gcs.rowGap) * Math.max(0, kids.length - 1);
+            for (const k of kids) total += k.offsetHeight;
+          } else {
+            total += el.offsetHeight;
+          }
+        }
+        total = Math.ceil(total);
+        if (total > 0 && vb.dataset.compactH !== String(total)) {
+          vb.dataset.compactH = String(total);
+          vb.style.setProperty("--zentral-vb-compact-h", total + "px");
+        }
+      } catch (e) {}
     }
 
     #getEasingBezier(animType) {
@@ -3311,6 +3349,7 @@
       }
       
       this.renderGrid();
+      this.updateVerticalBarBounds();
     }
 
     isPanelOpen() {
@@ -3334,8 +3373,8 @@
       this.#state.activeAppId = app.id;
       this.#state.isPinned = false;
       this.#state.isExpanded = false;
+      this.#syncVbCompactHeight();
       document.documentElement.setAttribute("zentral-app-panel-open", "true");
-      document.documentElement.setAttribute("zentral-vb-expanded", "true");
       this.#syncBarAnimVars();
       this.setAutohideHovered(true);
       this.#state.preExpandWidth = null;
@@ -3385,6 +3424,8 @@
       this.#dom.panel.getBoundingClientRect(); // Reflow
 
       requestAnimationFrame(() => {
+        // Bar grows to full height in the very same frame (and duration) the panel starts sliding in.
+        document.documentElement.setAttribute("zentral-vb-expanded", "true");
         const slideMs = Core.getPref(Constants.Apps.PREF_ANIMATION_SPEED);
         const animType = Core.getPref(Constants.Apps.PREF_ANIMATION_TYPE);
         const bezier = this.#getEasingBezier(animType);
@@ -3424,6 +3465,9 @@
       this.#state.isPinned = false;
       document.documentElement.removeAttribute("zentral-app-panel-open");
       this.#syncBarAnimVars();
+      this.#syncVbCompactHeight();
+      // Shrink the bar NOW, in the same frame the panel starts sliding out, so both animate as one.
+      document.documentElement.removeAttribute("zentral-vb-expanded");
       if (this.isPlacementVerticalBar() || (this.#dom.grid && !this.#dom.grid.matches(":hover"))) {
         this.setAutohideHovered(false);
       }
@@ -3459,7 +3503,6 @@
       
       this.#state.closeTimerId = setTimeout(() => {
         this.#state.closeTimerId = null;
-        document.documentElement.removeAttribute("zentral-vb-expanded");
         if (this.#dom.root) {
           this.#dom.root.removeAttribute("open");
           this.#dom.root.removeAttribute("closing");
@@ -3994,9 +4037,11 @@
         this.#dom.verticalBarTrigger.style.top = top + "px";
         this.#dom.verticalBarTrigger.style.bottom = gap + "px";
       }
+      vb.style.setProperty("--zentral-vb-top", top + "px");
 
       this.syncVerticalBarTheme();
       this.updateVerticalBarAddBtnPlacement();
+      this.#syncVbCompactHeight();
     }
 
     updateVerticalBarAddBtnPlacement() {
