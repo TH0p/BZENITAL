@@ -3335,6 +3335,7 @@
       if (this.#dom.root) {
         this.#dom.root.style.pointerEvents = "";
       }
+      document.documentElement.removeAttribute("zentral-unit-closing");
       this.#state.activeAppId = app.id;
       this.#state.isPinned = false;
       this.#state.isExpanded = false;
@@ -3453,6 +3454,7 @@
       if (animType === "none" || slideMs <= 0) {
         this.#dom.panel.style.transition = "none";
         this.#dom.panel.style.transform = slideTo;
+        document.documentElement.removeAttribute("zentral-unit-closing");
         document.documentElement.removeAttribute("zentral-vb-expanded");
         if (this.#dom.root) {
           this.#dom.root.removeAttribute("open");
@@ -3463,11 +3465,34 @@
         return;
       }
 
+      // Autohide bar: panel + bar leave as ONE rigid shape (same distance, duration and easing).
+      let panelSlideTo = slideTo;
+      try {
+        const vb = this.#dom.verticalBar;
+        if (vb && this.isPlacementVerticalBar() && Core.getPref(Constants.Apps.PREF_AUTOHIDE, false) === true) {
+          const pr = this.#dom.panel.getBoundingClientRect();
+          const br = vb.getBoundingClientRect();
+          const margin = 16;
+          let shift;
+          if (this.isVerticalBarOnRight()) {
+            shift = window.innerWidth - Math.min(pr.left, br.left) + margin;
+          } else {
+            shift = -(Math.max(pr.right, br.right) + margin);
+          }
+          if (isFinite(shift) && Math.abs(shift) > 1) {
+            document.documentElement.style.setProperty("--zentral-unit-shift", shift + "px");
+            document.documentElement.setAttribute("zentral-unit-closing", "true");
+            panelSlideTo = `translateX(${shift}px)`;
+          }
+        }
+      } catch (e) {}
+
       this.#dom.panel.style.transition = `transform ${slideMs}ms ${bezier}`;
-      this.#dom.panel.style.transform  = slideTo;
+      this.#dom.panel.style.transform  = panelSlideTo;
       
       this.#state.closeTimerId = setTimeout(() => {
         this.#state.closeTimerId = null;
+        document.documentElement.removeAttribute("zentral-unit-closing");
         if (this.#dom.root) {
           this.#dom.root.removeAttribute("open");
           this.#dom.root.removeAttribute("closing");
