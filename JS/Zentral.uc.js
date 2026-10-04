@@ -3336,6 +3336,10 @@
         this.#dom.root.style.pointerEvents = "";
       }
       document.documentElement.removeAttribute("zentral-unit-closing");
+      if (this.#dom.root) {
+        this.#dom.root.style.transition = "";
+        this.#dom.root.style.transform = "";
+      }
       this.#state.activeAppId = app.id;
       this.#state.isPinned = false;
       this.#state.isExpanded = false;
@@ -3467,6 +3471,7 @@
 
       // Autohide bar: panel + bar leave as ONE rigid shape (same distance, duration and easing).
       let panelSlideTo = slideTo;
+      let unitShift = null;
       try {
         const vb = this.#dom.verticalBar;
         if (vb && this.isPlacementVerticalBar() && Core.getPref(Constants.Apps.PREF_AUTOHIDE, false) === true) {
@@ -3482,16 +3487,26 @@
           if (isFinite(shift) && Math.abs(shift) > 1) {
             document.documentElement.style.setProperty("--zentral-unit-shift", shift + "px");
             document.documentElement.setAttribute("zentral-unit-closing", "true");
-            panelSlideTo = `translateX(${shift}px)`;
+            unitShift = shift;
           }
         }
       } catch (e) {}
 
-      this.#dom.panel.style.transition = `transform ${slideMs}ms ${bezier}`;
-      this.#dom.panel.style.transform  = panelSlideTo;
+      if (unitShift !== null && this.#dom.root) {
+        // The panel's clip box would cut it off, so move the WHOLE panel root (panel + controls) like the bar does.
+        this.#dom.root.style.transition = `transform ${slideMs}ms ${bezier}`;
+        this.#dom.root.style.transform = `translateX(${unitShift}px)`;
+      } else {
+        this.#dom.panel.style.transition = `transform ${slideMs}ms ${bezier}`;
+        this.#dom.panel.style.transform  = panelSlideTo;
+      }
       
       this.#state.closeTimerId = setTimeout(() => {
         this.#state.closeTimerId = null;
+        if (this.#dom.root) {
+          this.#dom.root.style.transition = "";
+          this.#dom.root.style.transform = "";
+        }
         document.documentElement.removeAttribute("zentral-unit-closing");
         if (this.#dom.root) {
           this.#dom.root.removeAttribute("open");
@@ -3982,12 +3997,12 @@
       if (this.isPanelAttachedToRight()) {
         root.style.left = "auto";
         root.style.right = targetRight + "px";
-        root.style.transform = "translateX(0)";
+        if (!document.documentElement.hasAttribute("zentral-unit-closing")) root.style.transform = "translateX(0)";
         root.setAttribute("data-panel-side", "right");
       } else {
         root.style.right = "auto";
         root.style.left = targetLeft + "px";
-        root.style.transform = "translateX(0)";
+        if (!document.documentElement.hasAttribute("zentral-unit-closing")) root.style.transform = "translateX(0)";
         root.setAttribute("data-panel-side", "left");
       }
     }
