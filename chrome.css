@@ -3718,6 +3718,15 @@ html:root[zentral-apps-placement="vertical-bar"]:not([zentral-apps-autohide="tru
   height: calc(100% - var(--zen-element-separation, 8px) * 2) !important;
 }
 
+/* Compact state: grid takes its natural height (otherwise it collapses to 0 and apps disappear) */
+html:root[zentral-apps-placement="vertical-bar"]:not([zentral-vb-expanded="true"]) #zentral-apps-vertical-bar #zen-apps-sidebar-grid {
+  height: auto !important;
+  flex: 0 1 auto !important;
+}
+html:root[zentral-apps-placement="vertical-bar"]:not([zentral-vb-expanded="true"]) #zentral-apps-vertical-bar-footer {
+  margin-top: 0 !important;
+}
+
 /* Autohide (floating) variant: same idea, animating top + height */
 html:root[zentral-apps-autohide="true"][zentral-apps-placement="vertical-bar"] #zentral-apps-vertical-bar {
   top: calc((100vh - var(--zentral-vb-compact-h, 0px)) / 2) !important;
