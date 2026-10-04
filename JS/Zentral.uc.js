@@ -672,7 +672,7 @@
         const cs = getComputedStyle(vb);
         const grid = this.#dom.grid;
         const footer = document.getElementById("zentral-apps-vertical-bar-footer");
-        const parts = [grid, footer].filter(el => el && el.parentNode === vb);
+        const parts = [grid, footer].filter(el => el && el.parentNode === vb && (el === grid || el.offsetHeight > 0));
         if (!parts.length) return;
         let total = num(cs.paddingTop) + num(cs.paddingBottom) + num(cs.rowGap) * (parts.length - 1);
         for (const el of parts) {
@@ -2573,9 +2573,28 @@
           footer.id = "zentral-apps-vertical-bar-footer";
         }
 
-        // Footer hide/settings buttons were removed on purpose; the footer only hosts the "+" button on overflow.
-        footer.querySelectorAll("#zentral-apps-vb-autohide-btn, #zentral-apps-vb-settings-btn").forEach(el => el.remove());
-        const autohideBtn = null, settingsBtn = null;
+        // The hide (autohide) button was removed on purpose.
+        footer.querySelectorAll("#zentral-apps-vb-autohide-btn").forEach(el => el.remove());
+        const autohideBtn = null;
+
+        // Settings button: lives at the end of the bar and is only shown while an app is open (see chrome.css).
+        let settingsBtn = footer.querySelector("#zentral-apps-vb-settings-btn");
+        if (!settingsBtn) {
+          settingsBtn = document.createElement("button");
+          settingsBtn.id = "zentral-apps-vb-settings-btn";
+          settingsBtn.className = "zen-app-tile zen-app-vb-footer-btn";
+          settingsBtn.title = "bzenital Settings";
+          settingsBtn.appendChild(this.#createSVG(SVG_STRINGS.SETTINGS));
+          settingsBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            if (window.Zentral?.Settings) window.Zentral.Settings.open();
+            else if (window.ZentralSettingsInstance) window.ZentralSettingsInstance.open();
+          });
+          settingsBtn.addEventListener("mousedown", (e) => {
+            if (e.button === 0) e.stopPropagation();
+          });
+          footer.appendChild(settingsBtn);
+        }
 
         if (footer.parentNode !== vb) {
           vb.appendChild(footer);
