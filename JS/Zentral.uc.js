@@ -2,7 +2,7 @@
 // @name           Zentral
 // @description    Unified Apps Grid and Tabs Groups
 // @author         Michele Pierini
-// @version        v2.4.1
+// @version        v2.4.2
 // @include        main
 // ==/UserScript==
 
@@ -64,7 +64,7 @@
    * Zentral Constants shared across modules (Preferences keys, default bounds, etc.)
    */
   const Constants = {
-    VERSION: "2.4.1",
+    VERSION: "2.4.2",
     /**
      * 1.1 Apps Module Preference Keys & Dimension Constraints
      */
@@ -2685,16 +2685,16 @@
           transition: width 0.22s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.18s ease !important;
         }
 
-        /* Outer margin matching Zen's element separation for exact visual symmetry */
+        /* Keep the Apps Bar separated from the content on either side. */
         :root[zentral-apps-placement="vertical-bar"]:not([zentral-apps-autohide="true"])[zen-right-side="true"] #zentral-apps-vertical-bar,
         :root[zentral-apps-placement="vertical-bar"]:not([zentral-apps-autohide="true"])[zen-sidebar-right="true"] #zentral-apps-vertical-bar {
           margin-left: var(--zen-element-separation, 6px) !important;
-          margin-right: 0 !important;
+          margin-right: 8px !important;
         }
 
         :root[zentral-apps-placement="vertical-bar"]:not([zentral-apps-autohide="true"]):not([zen-right-side="true"]):not([zen-sidebar-right="true"]) #zentral-apps-vertical-bar {
           margin-right: var(--zen-element-separation, 6px) !important;
-          margin-left: 0 !important;
+          margin-left: 8px !important;
         }
 
         :root[zentral-apps-placement="vertical-bar"]:not([zentral-apps-autohide="true"]) #zentral-apps-vertical-bar #zen-apps-sidebar-grid {

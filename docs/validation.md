@@ -20,6 +20,13 @@ and download source, never request upstream files, and retain a distinct ID from
 the original. The previous `main` manifest reproduced the upstream redirect; the
 fixed manifest passed using Sine 2.3.4.1c.
 
+Version 2.4.2 adds an 8px inner margin between the fixed Apps Bar and the page,
+mirrored for both sidebar positions in the stylesheet and injected CSS. The
+margin was measured in an isolated Zen profile; the bar remains 44px wide.
+All 112 Node tests, syntax checks and the isolated Zen smoke test passed. The
+collapse check now uses the current natural compact height, since moving the
+add button between the grid and footer can legitimately change that height.
+
 ## Scope and checks
 
 Run `npm test` for the regression suite and `npm run check` for script syntax.

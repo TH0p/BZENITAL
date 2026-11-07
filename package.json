@@ -1,6 +1,6 @@
 {
   "name": "bzenital",
-  "version": "2.4.1",
+  "version": "2.4.2",
   "private": true,
   "scripts": {
     "test": "node --test tests/*.test.cjs tests/panel_geometry.test.js",

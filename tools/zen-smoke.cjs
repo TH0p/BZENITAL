@@ -289,8 +289,12 @@ async function connect(port) {
   `), 'custom App Bar expansion');
   await execute(`${prefix} win.Zentral.Apps.closePanel(); return true;`);
   await waitFor(() => execute(`${prefix}
+    const bar = win.document.getElementById('zentral-apps-vertical-bar');
+    // Moving the add button between grid and footer can change the natural height.
+    const targetHeight = parseFloat(win.getComputedStyle(bar).getPropertyValue('--zentral-vb-compact-h'));
+    const height = bar.getBoundingClientRect().height;
     return !win.document.documentElement.hasAttribute('zentral-vb-expanded') &&
-      Math.abs(win.document.getElementById('zentral-apps-vertical-bar').getBoundingClientRect().height - ${compactBar.height}) < 2;
+      targetHeight > 0 && height < win.innerHeight / 2 && Math.abs(height - targetHeight) < 2;
   `), 'custom App Bar collapse');
   const groupCreated = await execute(`${prefix}
     const options = { triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(), skipAnimation: true };
