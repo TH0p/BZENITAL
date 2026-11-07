@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="theme.json"><img src="https://img.shields.io/badge/Version-v1.0.2-4A72FF.svg?style=flat-square" alt="Version"></a>
+  <a href="theme.json"><img src="https://img.shields.io/badge/Version-v2.3-4A72FF.svg?style=flat-square" alt="Version"></a>
   <a href="https://zen-browser.app/"><img src="https://img.shields.io/badge/Zen_Browser-Compatible-9B51E0.svg?style=flat-square" alt="Zen Browser"></a>
   <a href="theme.json"><img src="https://img.shields.io/badge/Sine_Engine-Native_Mod-00C853.svg?style=flat-square" alt="Sine Engine"></a>
   <a href="https://ko-fi.com/michele501st"><img src="https://img.shields.io/badge/Support-Ko--fi-FF5E5B.svg?style=flat-square&logo=ko-fi&logoColor=white" alt="Support on Ko-fi"></a>
@@ -147,7 +147,7 @@ Zentral includes a telemetry and diagnostics subsystem:
 1. In Zen Browser, navigate to **Settings** (<kbd>Ctrl</kbd> + <kbd>,</kbd>) → **Sine Mods**.
 2. Paste the repository URL:
    ```text
-   https://github.com/Michele501st/Zentral-Sine
+   https://github.com/TH0p/BZENITAL
    ```
 3. Click the **Install** button.
 4. Sine will automatically download, validate, and activate Zentral instantly!
@@ -176,11 +176,25 @@ Zentral includes a telemetry and diagnostics subsystem:
 2. Inside the profile, create or navigate to `chrome/sine-mods/`.
 3. Clone or extract this repository into a folder named `zentral`:
    ```bash
-   git clone https://github.com/Michele501st/Zentral-Sine.git "<profile-directory>/chrome/sine-mods/zentral"
+   git clone https://github.com/TH0p/BZENITAL.git "<profile-directory>/chrome/sine-mods/zentral"
    ```
 4. Open Zen Browser and enable **Zentral** in your Sine Mod manager.
 
 ---
+
+## Development and validation
+
+Run `npm test` with Node.js 20 or newer. No dependency installation is required.
+The tests cover preference changes, hot unloading, app lifecycle, tab-group recovery,
+diagnostic exports, and issue reporting. See [validation notes](docs/validation.md)
+for browser checks and remaining limits.
+
+Issue reports open a draft in this fork by default. An optional private deployment
+of `serverless/worker.js` can create issues directly after configuring
+`GITHUB_TOKEN` and the report endpoint preference. Its default repository is
+`TH0p/BZENITAL`; `GITHUB_REPOSITORY` can override it. No worker is deployed by this
+repository. Diagnostic attachment is opt-in; review logs for tab titles, URLs,
+and other personal content before sharing them.
 
 ## ⌨️ Shortcuts & Hotkeys
 

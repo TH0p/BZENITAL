@@ -1,0 +1,12 @@
+{
+  "name": "bzenital",
+  "version": "2.3.0",
+  "private": true,
+  "scripts": {
+    "test": "node --test tests/*.test.cjs",
+    "check": "node --check JS/Zentral.uc.js && node --check JS/zentral_logger.uc.js && node --input-type=module --check < serverless/worker.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -2,7 +2,7 @@
 // @name           Zentral
 // @description    Unified Apps Grid and Tabs Groups
 // @author         Michele Pierini
-// @version        v1.0.2
+// @version        v2.3
 // @include        main
 // ==/UserScript==
 
@@ -64,6 +64,7 @@
    * Zentral Constants shared across modules (Preferences keys, default bounds, etc.)
    */
   const Constants = {
+    VERSION: "2.3",
     /**
      * 1.1 Apps Module Preference Keys & Dimension Constraints
      */
@@ -241,7 +242,7 @@
         [Constants.Apps.PREF_APPS]: "[]",
         [Constants.Apps.PREF_WIDTH]: 350,
         [Constants.Apps.PREF_ANIMATION_SPEED]: Constants.Apps.DEFAULT_SLIDE_MS,
-        [Constants.Apps.PREF_ANIMATION_TYPE]: "slide",
+        [Constants.Apps.PREF_ANIMATION_TYPE]: "spring-gentle",
         [Constants.Apps.PREF_ENABLED]: true,
         [Constants.Apps.PREF_MAX_APPS]: Constants.Apps.DEFAULT_MAX_APPS,
         [Constants.Apps.PREF_APPS_PER_ROW]: Constants.Apps.DEFAULT_APPS_PER_ROW,
@@ -267,8 +268,30 @@
         [Constants.Diagnostics.PREF_LOGGER_APPS]: false,
         [Constants.Diagnostics.PREF_LOGGER_MENUS]: false,
         [Constants.Diagnostics.PREF_LOGGER_LAYOUT]: false,
-        [Constants.Diagnostics.PREF_REPORT_ENDPOINT]: "https://zentral-issue-reporter.michele-pierini.workers.dev/"
+        [Constants.Diagnostics.PREF_REPORT_ENDPOINT]: ""
       };
+    }
+
+    init() {
+      if (this._prefObserver) return;
+      this._prefObserver = (_subject, topic, key) => {
+        if (topic !== "nsPref:changed") return;
+        const value = this.getPref(key);
+        this.emit(`config:${key}`, value);
+        this.emit("configChanged", { key, value });
+      };
+      Services.prefs.addObserver("zen.workspace.", this._prefObserver);
+      Services.prefs.addObserver(Constants.Diagnostics.PREF_LOGGER_PATH, this._prefObserver);
+    }
+
+    destroy() {
+      if (this._prefObserver) {
+        for (const branch of ["zen.workspace.", Constants.Diagnostics.PREF_LOGGER_PATH]) {
+          try { Services.prefs.removeObserver(branch, this._prefObserver); } catch (_) {}
+        }
+        this._prefObserver = null;
+      }
+      this.listeners.clear();
     }
 
     /**
@@ -306,11 +329,17 @@
     getPref(key, fallback) {
       const defaultVal = this.defaultPrefs[key] !== undefined ? this.defaultPrefs[key] : fallback;
       try {
-        if (!Services.prefs.prefHasUserValue(key)) return defaultVal;
         const prefType = Services.prefs.getPrefType(key);
         if (prefType === Services.prefs.PREF_BOOL) return Services.prefs.getBoolPref(key);
         if (prefType === Services.prefs.PREF_INT) return Services.prefs.getIntPref(key);
-        if (prefType === Services.prefs.PREF_STRING) return Services.prefs.getStringPref(key);
+        if (prefType === Services.prefs.PREF_STRING) {
+          const value = Services.prefs.getStringPref(key);
+          if (typeof defaultVal === "number") {
+            const number = value.trim() === "" ? NaN : Number(value);
+            return Number.isFinite(number) ? number : defaultVal;
+          }
+          return value;
+        }
       } catch (e) {
         console.warn("[ZentralCore] Config failed to read pref", key, e);
       }
@@ -325,12 +354,17 @@
     setPref(key, value) {
       try {
         if (typeof value === "number") {
-          if (Number.isInteger(value)) Services.prefs.setIntPref(key, value);
+          if (!Number.isFinite(value)) return;
+          if (Services.prefs.getPrefType(key) === Services.prefs.PREF_STRING) Services.prefs.setStringPref(key, String(value));
+          else if (Number.isInteger(value)) Services.prefs.setIntPref(key, value);
           else Services.prefs.setStringPref(key, value.toString());
         }
         else if (typeof value === "string") Services.prefs.setStringPref(key, value);
         else if (typeof value === "boolean") Services.prefs.setBoolPref(key, value);
-        this.emit(`config:${key}`, value);
+        if (!this._prefObserver) {
+          this.emit(`config:${key}`, value);
+          this.emit("configChanged", { key, value });
+        }
       } catch (e) {
         console.warn("[ZentralCore] Config failed to save pref", key, e);
       }
@@ -401,6 +435,10 @@
    * Manages sidebar app grid, floating app panels, workspace isolation, and drag/drop reordering.
    */
   class ZentralApps {
+    #initialized = false;
+    #preloadGeneration = 0;
+    #gridResizeObserver = null;
+    #persistentListeners = [];
     /** @private Side attribute MutationObserver */
     #sideObserver = null;
     /** @private Toolbox & theme mutation observer */
@@ -422,6 +460,20 @@
     destroy() {
       try {
         Core.log("ZentralApps", "Destroying Apps module...");
+        this.#initialized = false;
+        this.#preloadGeneration++;
+        for (const key of ["preloadTimerId", "preloadWaitTimerId", "utilityCollapseTimer"]) {
+          if (this.#state[key]) clearTimeout(this.#state[key]);
+          this.#state[key] = null;
+        }
+        if (this.#state.preloadWaitResolve) {
+          this.#state.preloadWaitResolve();
+          this.#state.preloadWaitResolve = null;
+        }
+        if (this.#state.panelAnimationRafId) {
+          cancelAnimationFrame(this.#state.panelAnimationRafId);
+          this.#state.panelAnimationRafId = null;
+        }
         
         // 1. Clear timers and animation frames
         if (this.#state.repositionTimer) {
@@ -447,6 +499,14 @@
         this.stopPositionTracking();
 
         // 2. Disconnect observers
+        if (this.#gridResizeObserver) {
+          this.#gridResizeObserver.disconnect();
+          this.#gridResizeObserver = null;
+        }
+        for (const [target, type, listener, options] of this.#persistentListeners) {
+          target.removeEventListener(type, listener, options);
+        }
+        this.#persistentListeners = [];
         if (this.#sideObserver) {
           try { this.#sideObserver.disconnect(); } catch (_) {}
           this.#sideObserver = null;
@@ -539,6 +599,19 @@
         }
 
         // 6. Reset DOM references and state
+        this.#state.activeAppId = null;
+        this.#state.isPinned = false;
+        this.#state.isExpanded = false;
+        this.#state.isInstaPeeking = false;
+        this.#state.preExpandWidth = null;
+        this.#state.cachedScrollbarWidth = null;
+        this.#state.lastWorkspaceId = null;
+        for (const attr of ["zentral-app-panel-open", "zentral-vb-expanded", "zentral-unit-closing", "zentral-apps-autohide", "zentral-apps-placement", "zentral-apps-hide-utility"]) {
+          document.documentElement.removeAttribute(attr);
+        }
+        for (const property of ["--zentral-unit-shift", "--zentral-anim-ms", "--zentral-anim-ease", "--zentral-anim-ease-bar"]) {
+          document.documentElement.style.removeProperty(property);
+        }
         this.#dom = {
           grid: null,
           scrollBox: null,
@@ -585,6 +658,10 @@
       panelWidthPx: 0,
       appBrowsers: new Map(),
       positionRafId: null,
+      panelAnimationRafId: null,
+      preloadTimerId: null,
+      preloadWaitTimerId: null,
+      preloadWaitResolve: null,
       closeTimerId: null,
       cachedScrollbarWidth: null,
       repositionTimer: null,
@@ -707,10 +784,12 @@
      * Initializes the Apps Module UI, preferences, event observers, and preloading timers.
      */
     init() {
+      if (this.#initialized) return;
       if (!Core.getPref(Constants.Apps.PREF_ENABLED)) {
         Core.log("ZentralApps", "Apps Grid feature is disabled.");
         return;
       }
+      this.#initialized = true;
       this.injectStyles();
       this.createContainers();
       this.applyHideUtilitySectionPref();
@@ -729,7 +808,10 @@
       Core.emit("appsInitComplete", this);
 
       // Preload apps sequentially after browser startup
-      setTimeout(() => this.preloadAppsSequence(), 2000);
+      this.#state.preloadTimerId = setTimeout(() => {
+        this.#state.preloadTimerId = null;
+        this.preloadAppsSequence();
+      }, 2000);
     }
 
     /**
@@ -740,14 +822,30 @@
         const str = Core.getPref(Constants.Apps.PREF_APPS);
         const parsed = JSON.parse(str);
         if (Array.isArray(parsed)) {
+          const previousApps = this.#state.apps;
+          const seenIds = new Set();
           this.#state.apps = parsed
-            .filter(a => a && typeof a.id === "string" && typeof a.url === "string")
+            .filter(a => {
+              if (!a || typeof a.id !== "string" || !a.id || typeof a.url !== "string" || !a.url || seenIds.has(a.id)) return false;
+              seenIds.add(a.id);
+              return true;
+            })
             .map(a => {
               if (!a.workspaceId || a.workspaceId === "current") {
                 a.workspaceId = "all";
               }
               return a;
             });
+          for (const [id, browser] of this.#state.appBrowsers) {
+            const previous = previousApps.find(app => app.id === id);
+            const current = this.#state.apps.find(app => app.id === id);
+            if (!current || previous?.url !== current.url) {
+              if (this.#state.activeAppId === id) this.closePanel();
+              browser?.remove();
+              this.#state.appBrowsers.delete(id);
+            }
+          }
+          if (this.#state.appBrowsers.size === 0) this.stopBadgeSyncLoop();
         }
       } catch (e) {
         console.warn("[ZentralApps] Failed to load apps pref:", e);
@@ -777,7 +875,9 @@
         const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
         if (Array.isArray(parsed) && parsed.length > 0) {
           const slots = new Array(slotCount).fill(null);
-          parsed.forEach((k, idx) => { if (idx < slotCount && k) slots[idx] = k; });
+          parsed.forEach((k, idx) => {
+            if (idx < slotCount && ["settings", "autohide"].includes(k) && !slots.includes(k)) slots[idx] = k;
+          });
           const required = ["settings", "autohide"];
           required.forEach(reqKey => {
             if (!slots.includes(reqKey)) {
@@ -814,8 +914,11 @@
      * Uses staggered delays to prevent startup performance hits.
      */
     async preloadAppsSequence() {
+      const generation = this.#preloadGeneration;
       const preloadedApps = this.#state.apps.filter((a, i) => i === 0 || a.preload === true); // first app (WhatsApp) always runs in background
       for (const app of preloadedApps) {
+        if (generation !== this.#preloadGeneration || !this.#dom.panel) return;
+        if (!this.#state.apps.some(current => current.id === app.id && current.url === app.url)) continue;
         const { browser, isNew } = this.getOrCreateAppBrowser(app);
         if (isNew) {
           try {
@@ -828,8 +931,16 @@
           } catch (e) { console.error("[ZentralApps] Preload failed:", e); }
         }
         // Stagger preloads by 1.5 seconds to minimize main thread blocking
-        await new Promise(r => setTimeout(r, 1500));
+        await new Promise(resolve => {
+          this.#state.preloadWaitResolve = resolve;
+          this.#state.preloadWaitTimerId = setTimeout(() => {
+            this.#state.preloadWaitTimerId = null;
+            this.#state.preloadWaitResolve = null;
+            resolve();
+          }, 1500);
+        });
       }
+      if (generation !== this.#preloadGeneration) return;
       if (this.#state.appBrowsers && this.#state.appBrowsers.size > 0) {
         this.ensureBadgeSyncLoop();
       }
@@ -2366,7 +2477,8 @@
         window.addEventListener("resize", this._refreshGridRectListener, { passive: true });
         if (typeof ResizeObserver !== "undefined" && this.#dom.grid) {
           try {
-            new ResizeObserver(refreshGridRect).observe(this.#dom.grid);
+            this.#gridResizeObserver = new ResizeObserver(refreshGridRect);
+            this.#gridResizeObserver.observe(this.#dom.grid);
           } catch (_) {}
         }
 
@@ -3034,7 +3146,7 @@
         }
       }
 
-      let raw = (title || "").trim();
+      let raw = typeof title === "string" ? title.trim() : "";
       const rawLower = raw.toLowerCase().replace(/^www\./, "");
       if (WELL_KNOWN_SERVICES[rawLower]) return WELL_KNOWN_SERVICES[rawLower];
       for (const [knownHost, knownName] of Object.entries(WELL_KNOWN_SERVICES)) {
@@ -3294,7 +3406,9 @@
         }
       }
 
-      requestAnimationFrame(() => {
+      if (this.#state.positionRafId) cancelAnimationFrame(this.#state.positionRafId);
+      this.#state.positionRafId = requestAnimationFrame(() => {
+        this.#state.positionRafId = null;
         this.updateScrollMask();
         if (isVerticalBar) {
           this.updateVerticalBarAddBtnPlacement();
@@ -3346,6 +3460,8 @@
     }
 
     openPanel(app) {
+      if (!this.#dom.panel) return;
+      if (this.#state.panelAnimationRafId) cancelAnimationFrame(this.#state.panelAnimationRafId);
       Core.log("ZentralApps", "openPanel called for app:", app.id, "URL:", app.url);
       if (this.#state.closeTimerId) {
         clearTimeout(this.#state.closeTimerId);
@@ -3412,7 +3528,8 @@
       }
       this.#dom.panel.getBoundingClientRect(); // Reflow
 
-      requestAnimationFrame(() => {
+      this.#state.panelAnimationRafId = requestAnimationFrame(() => {
+        this.#state.panelAnimationRafId = null;
         // Bar grows to full height in the very same frame (and duration) the panel starts sliding in.
         document.documentElement.setAttribute("zentral-vb-expanded", "true");
         const slideMs = Core.getPref(Constants.Apps.PREF_ANIMATION_SPEED);
@@ -3430,6 +3547,10 @@
 
     closePanel() {
       Core.log("ZentralApps", "closePanel called");
+      if (this.#state.panelAnimationRafId) {
+        cancelAnimationFrame(this.#state.panelAnimationRafId);
+        this.#state.panelAnimationRafId = null;
+      }
       if (!this.#state.activeAppId && !this.#dom.root?.hasAttribute("open")) return;
       
       if (this.#state.closeTimerId) {
@@ -3773,6 +3894,7 @@
       b.setAttribute("usercontextid", "0"); b.setAttribute("customuseragent", ua); b.setAttribute("useragent", ua);
       b.setAttribute("context", "contentAreaContextMenu"); b.setAttribute("flex", "1");
       b.style.cssText = "width: 100%; height: 100%; flex: 1; border: none; overflow: hidden;";
+      b.style.display = "none";
 
       const checkAndUpdateBadge = () => {
         let title = "";
@@ -3830,6 +3952,7 @@
         } else {
           rafId = null;
         }
+        this._positionTrackingRafId = rafId;
       };
 
       const triggerBurst = () => {
@@ -3837,6 +3960,7 @@
         lastActivityTime = Date.now();
         if (!rafId) {
           rafId = requestAnimationFrame(rafLoop);
+          this._positionTrackingRafId = rafId;
         }
       };
 
@@ -3896,6 +4020,10 @@
 
     stopPositionTracking() {
       this._isTrackingPosition = false;
+      if (this._positionTrackingRafId) {
+        cancelAnimationFrame(this._positionTrackingRafId);
+        this._positionTrackingRafId = null;
+      }
       
       if (this._sidebarResizeObserver) {
         this._sidebarResizeObserver.disconnect();
@@ -4282,7 +4410,7 @@
       e.preventDefault();
       this._startX = e.clientX;
       const app = this.#state.apps.find(a => a.id === this.#state.activeAppId);
-      this._startW = app?.width || this.loadWidth();
+      this._startW = this.#state.panelWidthPx || app?.width || this.loadWidth();
       if (this.#dom.panel) this.#dom.panel.style.pointerEvents = "none";
       document.addEventListener("mousemove", this.onDrag);
       document.addEventListener("mouseup", this.onStopDrag);
@@ -4540,7 +4668,7 @@
       const parts = shortcutStr.split("+").map(p => p.trim());
       if (parts.length === 0) return false;
 
-      const primaryKey = parts[parts.length - 1].toUpperCase();
+      const primaryKey = parts[parts.length - 1].toUpperCase().replace(/^(UP|DOWN|LEFT|RIGHT)$/, "ARROW$1");
       const needsCtrl = parts.includes("Ctrl");
       const needsAlt = parts.includes("Alt");
       const needsShift = parts.includes("Shift");
@@ -4566,6 +4694,7 @@
     }
 
     handleInstaPeekKeyDown(e) {
+      if (e.defaultPrevented || e.isComposing || document.getElementById("zentral-settings-modal")?.getAttribute("data-open") === "true") return;
       const shortcut = Core.getPref(Constants.Apps.PREF_INSTA_PEEK_SHORTCUT, "Alt+Q");
       if (!shortcut || shortcut === "None") return;
 
@@ -4594,7 +4723,7 @@
       }
 
       const parts = shortcut.split("+").map(p => p.trim());
-      const primaryKey = parts[parts.length - 1].toUpperCase();
+      const primaryKey = parts[parts.length - 1].toUpperCase().replace(/^(UP|DOWN|LEFT|RIGHT)$/, "ARROW$1");
       const needsCtrl = parts.includes("Ctrl");
       const needsAlt = parts.includes("Alt");
       const needsShift = parts.includes("Shift");
@@ -4739,6 +4868,10 @@
     }
 
     setupObservers() {
+      const listen = (target, type, handler, options) => {
+        target.addEventListener(type, handler, options);
+        this.#persistentListeners.push([target, type, handler, options]);
+      };
       const menu = document.getElementById("tabContextMenu");
       if (menu && !document.getElementById("context_zenAppsSidebarAdd")) {
         let menuItem;
@@ -4751,7 +4884,7 @@
           menu.appendChild(sep); menu.appendChild(menuItem);
         }
         if (menuItem) {
-          menu.addEventListener("popupshowing", () => { menuItem.disabled = this.#state.apps.length >= Core.getPref(Constants.Apps.PREF_MAX_APPS); });
+          listen(menu, "popupshowing", () => { menuItem.disabled = this.#state.apps.length >= Core.getPref(Constants.Apps.PREF_MAX_APPS); });
           menuItem.addEventListener("command", this.handleTabContextMenuCommand);
         }
       }
@@ -4829,8 +4962,8 @@
             attributeFilter: ["style", "class"],
             childList: true
           });
-          el.addEventListener("transitionend", () => this._debouncedSyncTheme(), { passive: true });
-          el.addEventListener("animationend", () => this._debouncedSyncTheme(), { passive: true });
+          listen(el, "transitionend", () => this._debouncedSyncTheme(), { passive: true });
+          listen(el, "animationend", () => this._debouncedSyncTheme(), { passive: true });
         });
       }
 
@@ -4859,10 +4992,7 @@
         this.#resizeObs.observe(sidebarBox);
       }
 
-      window.addEventListener("unload", () => {
-        try { Services.prefs.removeObserver("zen.view.sidebar-expanded", layoutObserver); } catch (_) {}
-        this.stopPositionTracking();
-      }, { once: true });
+      listen(window, "unload", () => this.destroy(), { once: true });
 
       this.scheduleRepositionGrid(200);
     }
@@ -4877,6 +5007,54 @@
    * Enhances native tab groups with color pickers, folder integration, tooltips, and state persistence.
    */
   class ZentralTabGroups {
+    #initialized = false;
+    #destroyed = false;
+    #eventCleanups = [];
+    #groupCleanups = new Map();
+    #pendingTimers = new Set();
+
+    #listen(target, type, listener, options) {
+      target.addEventListener(type, listener, options);
+      const cleanup = () => target.removeEventListener(type, listener, options);
+      const owner = target.closest?.("tab-group");
+      const groupCleanup = owner && this.#groupCleanups.get(owner);
+      if (groupCleanup) groupCleanup.listeners.push(cleanup);
+      else this.#eventCleanups.push(cleanup);
+    }
+
+    #setTimeout(callback, delay) {
+      const timer = setTimeout(() => {
+        this.#pendingTimers.delete(timer);
+        if (!this.#destroyed) callback();
+      }, delay);
+      this.#pendingTimers.add(timer);
+      return timer;
+    }
+
+    #clearTimeout(timer) {
+      clearTimeout(timer);
+      this.#pendingTimers.delete(timer);
+    }
+
+    #getOtherWindowGroupIds() {
+      const ids = new Set();
+      let complete = false;
+      try {
+        const windows = typeof Services !== "undefined" && Services.wm?.getEnumerator("navigator:browser");
+        if (!windows) return { ids, complete };
+        while (windows.hasMoreElements()) {
+          const browserWindow = windows.getNext();
+          if (browserWindow === window || browserWindow.closed) continue;
+          const otherDocument = browserWindow.document;
+          if (!otherDocument?.querySelectorAll) return { ids, complete };
+          for (const group of otherDocument.querySelectorAll("tab-group:not([split-view-group]):not([zen-split-view]):not([is-zen-split])")) {
+            if (group.id) ids.add(group.id);
+          }
+        }
+        complete = true;
+      } catch (_) {}
+      return { ids, complete };
+    }
     /** @private Tabstrip MutationObserver */
     #tabStripObserver = null;
     /** @private Native popup suppression listener */
@@ -4988,8 +5166,23 @@
      * Module tear down for Sine hot unloading
      */
     destroy() {
+      if (this.#destroyed) return;
       try {
         Core.log("ZentralTabGroups", "Destroying TabGroups module...");
+
+        // Capture the intact native hierarchy before removing our decorations.
+        // A partially restored session must never overwrite its recovery state.
+        if (this.#initialized && !this.#isRestoring) this.saveTabGroupState();
+        this.#destroyed = true;
+        for (const timer of this.#pendingTimers) clearTimeout(timer);
+        this.#pendingTimers.clear();
+        for (const cleanup of this.#eventCleanups.splice(0)) {
+          try { cleanup(); } catch (_) {}
+        }
+        document.removeEventListener("TabGroupCreate", this.onTabGroupCreate, true);
+        document.removeEventListener("tabgroupcreated", this.onTabGroupCreate, true);
+        try { delete document.getElementById("tabContextMenu")?._zentralEnhanced; } catch (_) {}
+        this.renameGroupHalt(null, true);
 
         // 1. Clear timers
         if (this.#restoreSettleTimer) {
@@ -5061,6 +5254,7 @@
         }
         if (this._tabContextSubmenuListener) {
           try { window.removeEventListener("popupshowing", this._tabContextSubmenuListener, true); } catch (_) {}
+          try { window.removeEventListener("popupshown", this._tabContextSubmenuListener, true); } catch (_) {}
           this._tabContextSubmenuListener = null;
         }
         if (this.#dragGuardCleanup) {
@@ -5084,82 +5278,27 @@
           "zentral-color-picker-panel",
           "zentral-group-color-picker",
           "context_zenFolderUngroup_sep",
-          "context_zenFolderUngroup"
+          "context_zenFolderUngroup",
+          "zentral-tabgroup-folder-separator",
+          "zentral-tabgroup-convert-folder-to-group"
         ];
         idsToRemove.forEach(id => {
           const el = document.getElementById(id);
           if (el) el.remove();
         });
 
-        // 4. Secure state persistence across restarts: prune deleted groups and capture live hierarchy
-        try {
-          this.saveTabGroupState();
-        } catch (_) {}
-        const allGroups = Array.from(document.querySelectorAll("tab-group:not([split-view-group])"));
-
-        // 5. Flatten groups cleanly into regular top-level tabs across their respective workspaces
-        const rootTabContainer = (typeof gZenWorkspaces !== "undefined" && gZenWorkspaces.activeWorkspaceStrip) ||
-                                 gBrowser?.tabContainer?.arrowscrollbox ||
-                                 gBrowser?.tabContainer ||
-                                 document.getElementById("tabbrowser-tabs");
-
-        const sortedGroups = allGroups.slice().sort((a, b) => {
-          let depthA = 0, currA = a;
-          while ((currA = currA.parentElement?.closest("tab-group"))) depthA++;
-          let depthB = 0, currB = b;
-          while ((currB = currB.parentElement?.closest("tab-group"))) depthB++;
-          return depthB - depthA;
-        });
-
-        sortedGroups.forEach(group => {
-          try {
-            const obs = this.#groupObservers.get(group);
-            if (obs) {
-              obs.disconnect();
-              this.#groupObservers.delete(group);
-            }
-
-            if (group.shadowRoot) {
-              group.shadowRoot.querySelectorAll('.zentral-shadow-style').forEach(s => s.remove());
-            }
-
-            const wsId = this.getWorkspaceForElement(group);
-            const wsNormalSection = wsId && window.gZenWorkspaces?.workspaceElement(wsId)?.querySelector(".zen-workspace-normal-tabs-section");
-            const parentContainer = (group.parentNode && group.parentNode.isConnected) ? group.parentNode : (wsNormalSection || rootTabContainer);
-
-            const tabs = Array.from(group.querySelectorAll("tab, tabbrowser-tab, .tabbrowser-tab")).filter(t => t.closest("tab-group") === group);
-
-            // Move tabs directly before the group container in its workspace
-            tabs.forEach(tab => {
-              if (group.parentNode && group.parentNode === parentContainer) {
-                try {
-                  parentContainer.insertBefore(tab, group);
-                } catch (_) {
-                  try { parentContainer.appendChild(tab); } catch (_) {}
-                }
-              } else if (parentContainer) {
-                try { parentContainer.appendChild(tab); } catch (_) {}
-              }
-
-              // Clear native grouping pointers so tabs display as regular flat tabs without indentations
-              try { if (typeof gBrowser?.addTabToGroup === "function") gBrowser.addTabToGroup(tab, null); } catch (_) {}
-              try { tab.group = null; } catch (_) {}
-              try { tab.removeAttribute("group"); tab.removeAttribute("zen-group"); } catch (_) {}
-              // Retain data-zentral-group-id, data-zentral-group-ws, and SessionStore for seamless restore on re-enable
-            });
-
-            // Cleanly remove the tab-group element so there are no empty gaps in the strip
-            try {
-              group.remove();
-            } catch (_) {}
-          } catch (e) {
-            console.error("[ZentralTabGroups] Error flattening group on destroy:", e);
-          }
-        });
+        // Native groups and their tabs belong to the browser, not to this mod.
+        for (const [group, cleanup] of this.#groupCleanups) {
+          try { this.#groupObservers.get(group)?.disconnect(); } catch (_) {}
+          try { cleanup(); } catch (_) {}
+        }
+        this.#groupCleanups.clear();
+        this.#groupObservers = new WeakMap();
 
         // 6. Clean up root attributes
         document.documentElement.removeAttribute("zentral-sidebar-collapsed");
         document.documentElement.removeAttribute("zentral-show-chevron");
+        document.documentElement.removeAttribute("zentral-indicator-type");
         document.documentElement.removeAttribute("zentral-label-opacity-below-85");
         document.documentElement.removeAttribute("zen-renaming-group");
         document.documentElement.style.removeProperty("--zentral-tabgroup-label-opacity");
@@ -5213,8 +5352,13 @@
      */
     sanitizeState(state) {
       if (!state || typeof state !== "object") return { groups: {}, tabMapping: {} };
-      const groups = { ...(state.groups || {}) };
+      const hasTabMapping = !!state.tabMapping && typeof state.tabMapping === "object";
+      const groups = { ...(state.groups || state) };
       const tabMapping = { ...(state.tabMapping || {}) };
+
+      // Older versions stored only group metadata. Missing mappings are unknown,
+      // not evidence of an empty group.
+      if (!hasTabMapping) return { groups, tabMapping };
 
       // Find all groups that are parents of other groups
       const parentIds = new Set();
@@ -5227,12 +5371,7 @@
         const tabs = tabMapping[id] || [];
         const isParent = parentIds.has(id);
         const hasNoTabs = !tabs || tabs.length === 0;
-        const cleanLabel = (g?.label || "").replace(/[\u200B-\u200D\uFEFF]/g, "").trim();
-
         if (hasNoTabs && !isParent) {
-          delete groups[id];
-          delete tabMapping[id];
-        } else if (!cleanLabel && hasNoTabs) {
           delete groups[id];
           delete tabMapping[id];
         }
@@ -5245,6 +5384,7 @@
      * Reconstructs tab-group containers from tabs tagged with data-zentral-group-* attributes, SessionStore values, or saved state.
      */
     reconstructSavedGroups() {
+      if (this.#destroyed) return;
       try {
         const ss = this.#getSessionStore();
 
@@ -5332,9 +5472,10 @@
                                (ss?.getCustomTabValue?.(tab, "zentral-parent-id")) ||
                                savedMeta.parentId ||
                                null;
-              const collapsed = tab.getAttribute("data-zentral-group-collapsed") === "true" ||
-                                (ss?.getCustomTabValue?.(tab, "zentral-group-collapsed") === "true") ||
-                                savedMeta.collapsed === true;
+              const storedCollapsed = tab.hasAttribute("data-zentral-group-collapsed")
+                ? tab.getAttribute("data-zentral-group-collapsed")
+                : ss?.getCustomTabValue?.(tab, "zentral-group-collapsed");
+              const collapsed = storedCollapsed === "true" || (storedCollapsed !== "false" && savedMeta.collapsed === true);
               const wsId = tab.getAttribute("data-zentral-group-ws") ||
                            (ss?.getCustomTabValue?.(tab, "zentral-group-ws")) ||
                            savedMeta.workspaceId ||
@@ -5696,10 +5837,10 @@
      */
     safeHideTooltip(delayMs = 350) {
       if (window.zentralTooltipHideTimer) {
-        clearTimeout(window.zentralTooltipHideTimer);
+        this.#clearTimeout(window.zentralTooltipHideTimer);
         window.zentralTooltipHideTimer = null;
       }
-      window.zentralTooltipHideTimer = setTimeout(() => {
+      window.zentralTooltipHideTimer = this.#setTimeout(() => {
         const panel = document.getElementById("zentral-tabgroup-tooltip");
         const container = document.getElementById("zentral-tabgroup-tooltip-container");
         if (!panel || typeof panel.hidePopup !== "function") return;
@@ -5765,6 +5906,7 @@
      * Initializes Tab Groups module observers, styles, color palettes, and tooltip containers.
      */
     init() {
+      if (this.#initialized || this.#destroyed) return;
       if (typeof PrivateBrowsingUtils !== "undefined" && PrivateBrowsingUtils.isWindowPrivate(window)) {
         Core.log("ZentralTabGroups", "Tab Groups disabled in private window.");
         return;
@@ -5773,6 +5915,7 @@
         Core.log("ZentralTabGroups", "Tab Groups feature is disabled.");
         return;
       }
+      this.#initialized = true;
       this.#isRestoring = true;
       this.clearStoredColorData();
       this.loadSavedColors();
@@ -5789,11 +5932,11 @@
       this.hookAddTab();
       document.addEventListener("TabGroupCreate", this.onTabGroupCreate, true);
       document.addEventListener("tabgroupcreated", this.onTabGroupCreate, true);
-      document.addEventListener("TabGroupCreateByUser", (e) => {
+      this.#listen(document, "TabGroupCreateByUser", (e) => {
         const group = e.target?.closest ? (e.target.closest('tab-group:not([split-view-group])') || (e.target.tagName === 'TAB-GROUP' ? e.target : null)) : null;
         if (group && !this.#isRestoring) this.checkAndApplyFirstTimeGroupColor(group);
       }, true);
-      document.addEventListener("TabGroupUpdate", (e) => {
+      this.#listen(document, "TabGroupUpdate", (e) => {
         const group = e.target?.closest ? (e.target.closest('tab-group:not([split-view-group])') || (e.target.tagName === 'TAB-GROUP' ? e.target : null)) : null;
         if (group && !this.#isRestoring) this.checkAndApplyFirstTimeGroupColor(group);
       }, true);
@@ -5843,6 +5986,8 @@
       // Workspace switch listener to ensure tab groups in newly focused Space are rendered & restored
       this.#workspaceSwitchListener = () => {
         try {
+          // Save pending edits before reconstruction reads the previous snapshot.
+          if (this.#state.saveStateTimer && !this.#isRestoring) this.saveTabGroupState();
           this.reconstructSavedGroups();
           this.loadTabGroupState();
           document.querySelectorAll("tab-group:not([split-view-group])").forEach(g => this.processGroup(g));
@@ -5881,14 +6026,7 @@
       });
       this.#rootAttrObs.observe(document.documentElement, { attributes: true, attributeFilter: ["zen-sidebar-collapsed", "zen-right-side"] });
 
-      // Clean up pref observer on window close to prevent ghost observers (H-03)
-      window.addEventListener("unload", () => {
-        try { 
-          Services.prefs.removeObserver("zen.view.sidebar-expanded", updateSidebarAttr);
-          Services.prefs.removeObserver("zen.view.use-single-toolbar", updateSidebarAttr);
-          rootAttrObs.disconnect();
-        } catch (_) {}
-      }, { once: true });
+      // The bootstrap unload handler calls destroy(), which owns these observers.
 
       // Tooltip injection (XUL panel with noautohide=true to avoid stealing click events)
       if (!document.getElementById("zentral-tabgroup-tooltip")) {
@@ -5901,7 +6039,7 @@
 
         const cancelHideTimer = () => {
           if (window.zentralTooltipHideTimer) {
-            clearTimeout(window.zentralTooltipHideTimer);
+            this.#clearTimeout(window.zentralTooltipHideTimer);
             window.zentralTooltipHideTimer = null;
           }
         };
@@ -6309,9 +6447,9 @@
           };
 
           forceUngroup();
-          window.setTimeout(forceUngroup, 0);
-          window.setTimeout(forceUngroup, 50);
-          window.setTimeout(forceUngroup, 150);
+          this.#setTimeout(forceUngroup, 0);
+          this.#setTimeout(forceUngroup, 50);
+          this.#setTimeout(forceUngroup, 150);
           return;
         }
 
@@ -6414,9 +6552,9 @@
             try { window.gBrowser?.tabContainer?._invalidateCachedTabs?.(); } catch (_) {}
           };
           forceUngroup();
-          window.setTimeout(forceUngroup, 0);
-          window.setTimeout(forceUngroup, 50);
-          window.setTimeout(forceUngroup, 150);
+          self.#setTimeout(forceUngroup, 0);
+          self.#setTimeout(forceUngroup, 50);
+          self.#setTimeout(forceUngroup, 150);
         }
 
         return tab;
@@ -6469,7 +6607,7 @@
               if (tag === "TAB-GROUP") {
                 groupsStructureChanged = true;
                 window.requestAnimationFrame(() => {
-                  if (node.isConnected) {
+                  if (!this.#destroyed && node.isConnected) {
                     const isSplit = node.hasAttribute?.("split-view-group") || 
                                     node.hasAttribute?.("zen-split-view") || 
                                     node.hasAttribute?.("is-zen-split") || 
@@ -6493,7 +6631,7 @@
                 groupsStructureChanged = true;
                 childGroups.forEach((group) => {
                   window.requestAnimationFrame(() => {
-                    if (group.isConnected) {
+                    if (!this.#destroyed && group.isConnected) {
                       const gSplit = group.hasAttribute?.("split-view-group") || 
                                      group.hasAttribute?.("zen-split-view") || 
                                      group.hasAttribute?.("is-zen-split") || 
@@ -6523,12 +6661,18 @@
             
             for (const node of mutation.removedNodes) {
               if (node.nodeType === Node.ELEMENT_NODE && node.tagName?.toUpperCase() === "TAB-GROUP") {
+                // Reparenting emits a removal too. Keep its metadata and bindings.
+                if (node.isConnected || this.#isRestoring) continue;
                 needsSave = true;
                 groupsStructureChanged = true;
                 const obs = this.#groupObservers.get(node);
                 if (obs) { obs.disconnect(); this.#groupObservers.delete(node); }
+                try { this.#groupCleanups.get(node)?.(); } catch (_) {}
+                this.#groupCleanups.delete(node);
                 this.#processedGroups.delete(node);
                 if (node.id) {
+                  const otherWindows = this.#getOtherWindowGroupIds();
+                  if (!otherWindows.complete || otherWindows.ids.has(node.id)) continue;
                   try { this.removeSavedColor(node.id); } catch (_) {}
                   try {
                     const stateStr = Core.getPref(Constants.TabGroups.PREF_STATE);
@@ -6650,7 +6794,7 @@
           if (typeof target.hidePopup === "function") {
             try { target.hidePopup(); } catch (_) {}
           }
-          try { target.remove(); } catch (_) {}
+          // Keep native controls alive so disabling Zentral restores their use.
         }
       };
       window.addEventListener("popupshowing", this.#popupShowingListener, true);
@@ -6679,12 +6823,10 @@
             const list = root.querySelectorAll ? root.querySelectorAll(sel) : [];
             list.forEach(el => {
               if (typeof el.hidePopup === "function") el.hidePopup();
-              try { el.remove(); } catch (_) {}
             });
             const el = document.getElementById(sel.replace("#", ""));
             if (el) {
               if (typeof el.hidePopup === "function") el.hidePopup();
-              try { el.remove(); } catch (_) {}
             }
           } catch (_) {}
         });
@@ -6752,7 +6894,7 @@
 
       this.#state.groupEdited = labelElement;
       this.#state.isStartingRename = true;
-      setTimeout(() => { this.#state.isStartingRename = false; }, 350);
+      this.#setTimeout(() => { this.#state.isStartingRename = false; }, 350);
 
       document.documentElement.setAttribute('zen-renaming-group', 'true');
       labelElement.classList.add('tab-group-label-editing');
@@ -6766,7 +6908,7 @@
       input.setAttribute('autocomplete', 'off');
 
       labelElement.after(input);
-      setTimeout(() => {
+      this.#setTimeout(() => {
         try {
           input.focus();
           if (selectAll) input.select();
@@ -6809,7 +6951,7 @@
     processGroup(group) {
       // Use a WeakSet instead of a DOM attribute to avoid persisting across restarts
       // and to prevent guard bypasses when native code resets group attributes.
-      if (!group || 
+      if (this.#destroyed || !group ||
           this.#processedGroups.has(group) || 
           group.classList?.contains("zen-folder") || 
           group.hasAttribute?.("zen-folder") || 
@@ -6820,6 +6962,68 @@
           group.classList?.contains("zen-split-view")) {
         return;
       }
+      const existingLabel = Array.from(group.querySelectorAll(".tab-group-label-container")).find(element => element.closest("tab-group") === group);
+      const originalElements = new Set(existingLabel ? [existingLabel, ...existingLabel.querySelectorAll("*")] : []);
+      const originalStyles = new Map();
+      const captureStyles = (element, properties) => {
+        if (element) originalStyles.set(element, properties.map(property => [property, element.style.getPropertyValue(property), element.style.getPropertyPriority?.(property) || ""]));
+      };
+      captureStyles(group, ["border-radius"]);
+      const originalLabel = [...originalElements].find(element => element.classList.contains("tab-group-label-container"));
+      captureStyles(originalLabel, ["border-radius", "aspect-ratio", "align-self", "width", "min-width", "max-width", "height", "min-height", "max-height", "box-sizing", "display", "flex-direction", "align-items", "padding"]);
+      captureStyles(originalLabel?.querySelector(".tab-group-label"), ["border-radius", "width", "flex", "overflow", "text-overflow"]);
+      const originalIcon = originalLabel?.querySelector(".tab-group-icon");
+      captureStyles(originalIcon, ["display", "border", "outline", "box-shadow", "background", "background-image"]);
+      const originalHidden = new Map();
+      for (const element of originalIcon?.children || []) {
+        captureStyles(element, ["display", "visibility", "width", "height", "min-width", "min-height", "opacity", "list-style-image", "background"]);
+        originalHidden.set(element, element.hasAttribute("hidden") ? element.getAttribute("hidden") : null);
+      }
+      const originalContext = group.getAttribute("context");
+      const originalLabelContext = existingLabel?.hasAttribute("context") ? existingLabel.getAttribute("context") : null;
+      const wasStandard = group.classList.contains("zentral-standard");
+      const originalMethods = new Map(["ungroupTabs", "_useFaviconColor"].map(key => [key, Object.getOwnPropertyDescriptor(group, key)]));
+      const cleanup = () => {
+        for (const removeListener of cleanup.listeners.splice(0)) removeListener();
+        this.#groupObservers.get(group)?.disconnect();
+        const label = group.querySelector(".tab-group-label-container");
+        if (label) {
+          delete label._zentralToggleBound;
+          delete label._zentralContextMenuBound;
+          label.removeAttribute("zentral-hover");
+          if (originalLabelContext !== null) label.setAttribute("context", originalLabelContext);
+          else label.removeAttribute("context");
+          const wrapper = label.querySelector(".zentral-tab-title-wrapper");
+          if (wrapper && !originalElements.has(wrapper)) {
+            while (wrapper.firstChild) label.insertBefore(wrapper.firstChild, wrapper);
+            wrapper.remove();
+          }
+          label.querySelectorAll(".zentral-group-initials, .zentral-subgroups-badge, .tab-close-button, .tab-group-icon-container").forEach(element => {
+            if (!originalElements.has(element)) element.remove();
+          });
+        }
+        group.shadowRoot?.querySelectorAll(".zentral-shadow-style").forEach(element => element.remove());
+        for (const [element, properties] of originalStyles) {
+          for (const [property, value, priority] of properties) {
+            if (value) element.style.setProperty(property, value, priority);
+            else element.style.removeProperty(property);
+          }
+        }
+        for (const [element, hidden] of originalHidden) {
+          if (hidden !== null) element.setAttribute("hidden", hidden);
+          else element.removeAttribute("hidden");
+        }
+        if (!wasStandard) group.classList.remove("zentral-standard");
+        for (const attr of ["zentral-group", "data-close-button-added", "data-has-subgroups"]) group.removeAttribute(attr);
+        if (originalContext) group.setAttribute("context", originalContext);
+        else group.removeAttribute("context");
+        for (const [key, descriptor] of originalMethods) {
+          if (descriptor) Object.defineProperty(group, key, descriptor);
+          else delete group[key];
+        }
+      };
+      cleanup.listeners = [];
+      this.#groupCleanups.set(group, cleanup);
       group.classList.add("zentral-standard");
       group.setAttribute("zentral-group", "true");
       group.style.setProperty("border-radius", "6px", "important");
@@ -6850,7 +7054,7 @@
       // Bind click collapse toggle to ensure all groups (top-level and nested) collapse/expand on click
       if (!labelContainer._zentralToggleBound) {
         labelContainer._zentralToggleBound = true;
-        labelContainer.addEventListener("click", (e) => {
+        this.#listen(labelContainer, "click", (e) => {
           if (e.target.closest(".tab-close-button") || e.target.closest("#tab-label-input") || e.target.closest(".zentral-tg-drag-handle")) return;
           e.preventDefault();
           e.stopPropagation();
@@ -6962,6 +7166,9 @@
           if (_styleGuard || _isHovered) return;
           _styleGuard = true;
           enforceRestingStyles();
+          // MutationObserver notifications are asynchronous. A synchronous flag
+          // alone cannot suppress the notifications from our own style writes.
+          styleWatcher.takeRecords();
           _styleGuard = false;
         });
         styleWatcher.observe(labelContainer, { attributes: true, attributeFilter: ["style"] });
@@ -6971,10 +7178,10 @@
         // Labels are always full-width ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â no hover expand/collapse needed.
         
         let hoverTimer = null;
-        labelContainer.addEventListener("mouseenter", () => {
+        this.#listen(labelContainer, "mouseenter", () => {
           if (!Core.getPref(Constants.TabGroups.PREF_THUMBNAILS)) return;
           labelContainer.setAttribute("zentral-hover", "true");
-          hoverTimer = setTimeout(() => {
+          hoverTimer = this.#setTimeout(() => {
             const panel = document.getElementById("zentral-tabgroup-tooltip");
             const container = document.getElementById("zentral-tabgroup-tooltip-container");
             if (panel && container && group) {
@@ -7078,7 +7285,7 @@
                       row.style.marginTop = "0";
                       row.style.marginBottom = "0";
                     });
-                    setTimeout(() => {
+                    this.#setTimeout(() => {
                       row.remove();
                       if (container.querySelectorAll(".zentral-tooltip-row").length === 0) {
                         const div = document.createElement("div");
@@ -7099,17 +7306,17 @@
             }
           }, 350);
         });
-        labelContainer.addEventListener("mouseleave", () => {
+        this.#listen(labelContainer, "mouseleave", () => {
           labelContainer.removeAttribute("zentral-hover");
-          if (hoverTimer) clearTimeout(hoverTimer);
+          if (hoverTimer) this.#clearTimeout(hoverTimer);
           this.safeHideTooltip(350);
         });
-        labelContainer.addEventListener("mousedown", () => {
-          if (hoverTimer) clearTimeout(hoverTimer);
+        this.#listen(labelContainer, "mousedown", () => {
+          if (hoverTimer) this.#clearTimeout(hoverTimer);
           const panel = document.getElementById("zentral-tabgroup-tooltip");
           if (panel && panel.hidePopup) panel.hidePopup();
         });
-        labelContainer.addEventListener("dblclick", (e) => {
+        this.#listen(labelContainer, "dblclick", (e) => {
           if (e.target.closest(".tab-close-button") || e.target.closest(".tab-group-icon")) return;
           e.preventDefault();
           e.stopPropagation();
@@ -7132,7 +7339,7 @@
         labelContainer.insertBefore(iconContainer, labelContainer.firstChild);
         labelContainer.appendChild(closeButton);
 
-        closeButton.addEventListener("click", (event) => {
+        this.#listen(closeButton, "click", (event) => {
           event.stopPropagation();
           event.preventDefault();
           try {
@@ -7545,7 +7752,7 @@
         e.preventDefault();
       });
 
-      window.addEventListener("mousemove", (e) => {
+      this.#listen(window, "mousemove", (e) => {
         if (!isDragging) return;
         const deltaX = e.screenX - startX;
         const deltaY = e.screenY - startY;
@@ -7557,7 +7764,7 @@
         panel.moveTo(currentX + deltaX, currentY + deltaY);
       });
 
-      window.addEventListener("mouseup", (e) => {
+      this.#listen(window, "mouseup", (e) => {
         if (isDragging && e.button === 0) {
           isDragging = false;
           handle.classList.remove("dragging");
@@ -7582,7 +7789,7 @@
      * Attaches custom context menu actions to native Zen folder menus.
      */
     addFolderContextMenuItems() {
-      setTimeout(() => {
+      this.#setTimeout(() => {
         const folderMenu = document.getElementById("zenFolderActions");
         if (!folderMenu || folderMenu.querySelector("#zentral-tabgroup-convert-folder-to-group")) return;
         
@@ -7591,7 +7798,7 @@
           const convertToSpaceItem = folderMenu.querySelector("#context_zenFolderToSpace");
           if (convertToSpaceItem) { convertToSpaceItem.after(frag); } else { folderMenu.appendChild(frag); }
           
-          folderMenu.addEventListener('command', (event) => {
+          this.#listen(folderMenu, 'command', (event) => {
             if (event.target.id === 'zentral-tabgroup-convert-folder-to-group') {
               const triggerNode = folderMenu.triggerNode;
               const folder = triggerNode?.closest('zen-folder');
@@ -7677,7 +7884,7 @@
           const popup = e.target;
           if (popup && (popup.id === "context_moveTabToGroupPopupMenu" || popup.id?.includes("TabToGroup") || popup.parentNode?.id === "context_moveTabToGroup")) {
             handleGroupSubmenu(popup);
-            setTimeout(() => handleGroupSubmenu(popup), 0);
+            this.#setTimeout(() => handleGroupSubmenu(popup), 0);
           }
         };
         window.addEventListener("popupshowing", this._tabContextSubmenuListener, true);
@@ -7714,7 +7921,7 @@
         labelContainer.setAttribute("context", "zentral-tabgroup-context-menu");
         if (!labelContainer._zentralContextMenuBound) {
           labelContainer._zentralContextMenuBound = true;
-          labelContainer.addEventListener("contextmenu", (event) => {
+          this.#listen(labelContainer, "contextmenu", (event) => {
             if (event.target.closest("#tab-label-input")) return;
             event.preventDefault();
             event.stopPropagation();
@@ -7965,7 +8172,11 @@
      * @param {boolean} [force=false] - Force apply even if already colored.
      */
     async applyAverageGroupColor(group, force = false) {
-      if (!group || !group.isConnected) return;
+      if (this.#destroyed || !group || !group.isConnected) return;
+      const colorAtStart = group.style.getPropertyValue("--zentral-custom-color");
+      const tabColorAtStart = group.style.getPropertyValue("--tab-group-color");
+      const colorChanged = () => group.style.getPropertyValue("--zentral-custom-color") !== colorAtStart ||
+                                 group.style.getPropertyValue("--tab-group-color") !== tabColorAtStart;
 
       if (!force) {
         const customColor = group.style.getPropertyValue("--zentral-custom-color");
@@ -7994,7 +8205,7 @@
         let attempt = 0;
         while (tabs.length === 0 && attempt < retryDelays.length) {
           await new Promise(r => setTimeout(r, retryDelays[attempt++]));
-          if (!group.isConnected) return;
+          if (this.#destroyed || !group.isConnected || colorChanged()) return;
           tabs = this.getDirectTabs(group);
         }
 
@@ -8003,6 +8214,7 @@
         const colors = [];
         for (const tab of tabs) {
           const col = await this.extractTabFaviconColor(tab);
+          if (this.#destroyed || !group.isConnected || colorChanged()) return;
           if (col) colors.push(col);
         }
 
@@ -8026,13 +8238,15 @@
 
         // If colors were not ready yet (favicon was still downloading), schedule a retry upgrade after 750ms
         if (colors.length === 0) {
-          setTimeout(async () => {
-            if (!group.isConnected) return;
+          const fallbackColor = group.style.getPropertyValue("--zentral-custom-color");
+          this.#setTimeout(async () => {
+            if (this.#destroyed || !group.isConnected || group.style.getPropertyValue("--zentral-custom-color") !== fallbackColor) return;
             const retryTabs = this.getDirectTabs(group);
             if (retryTabs.length === 0) return;
             const retryColors = [];
             for (const tab of retryTabs) {
               const col = await this.extractTabFaviconColor(tab);
+              if (this.#destroyed || !group.isConnected || group.style.getPropertyValue("--zentral-custom-color") !== fallbackColor) return;
               if (col) retryColors.push(col);
             }
             if (retryColors.length > 0) {
@@ -8087,7 +8301,7 @@
      * Schedules a debounced refresh of sub-groups indicator badges.
      */
     scheduleBadgeUpdate() {
-      if (this.#badgeUpdateRAF) return;
+      if (this.#destroyed || this.#badgeUpdateRAF) return;
       this.#badgeUpdateRAF = window.requestAnimationFrame(() => {
         this.#badgeUpdateRAF = null;
         this.updateAllSubGroupsBadges();
@@ -8158,6 +8372,40 @@
       let dragCandidateTab = null;
       let startX = 0;
       let startY = 0;
+      let restoreSelection = null;
+
+      // Firefox may expose these as own accessors, not only prototype accessors.
+      // Preserve the exact descriptor and roll back partial locks on failure.
+      const lockSelection = (activeTab, isolatedTab = null) => {
+        const restores = [];
+        const restore = () => {
+          for (const undo of restores.reverse()) undo();
+        };
+        const override = (target, key, descriptor) => {
+          const original = Object.getOwnPropertyDescriptor(target, key);
+          Object.defineProperty(target, key, { ...descriptor, configurable: true });
+          restores.push(() => {
+            if (original) Object.defineProperty(target, key, original);
+            else delete target[key];
+          });
+        };
+        try {
+          if (window.gBrowser) {
+            if (isolatedTab) override(window.gBrowser, "selectedElements", { get: () => [isolatedTab] });
+            override(window.gBrowser, "selectedTab", { get: () => activeTab, set: () => {} });
+          }
+          override(tabContainer, "selectedItem", { get: () => activeTab, set: () => {} });
+          return restore;
+        } catch (_) {
+          restore();
+          return null;
+        }
+      };
+      const releaseSelection = () => {
+        restoreSelection?.();
+        restoreSelection = null;
+        isGuardingTab = false;
+      };
 
       // Helper: resolve tab or split view primary tab
       const resolveTab = (target) => {
@@ -8183,28 +8431,14 @@
 
         const currentActive = window.gBrowser?.selectedTab;
         if (tab !== currentActive && !tab.multiselected) {
+          releaseSelection();
+          restoreSelection = lockSelection(currentActive);
+          if (!restoreSelection) return;
           dragCandidateTab = tab;
           isGuardingTab = true;
           startX = e.clientX;
           startY = e.clientY;
 
-          // Temporarily lock gBrowser.selectedTab and tabContainer.selectedItem
-          // so tab.on_mousedown does NOT switch the active tab on mousedown.
-          if (window.gBrowser) {
-            Object.defineProperty(window.gBrowser, "selectedTab", {
-              get: () => currentActive,
-              set: () => {},
-              configurable: true
-            });
-          }
-
-          if (tabContainer) {
-            Object.defineProperty(tabContainer, "selectedItem", {
-              get: () => currentActive,
-              set: () => {},
-              configurable: true
-            });
-          }
         }
       };
 
@@ -8212,9 +8446,7 @@
       const onMouseUp = (e) => {
         if (isGuardingTab) {
           // Release temporary locks immediately
-          if (window.gBrowser) delete window.gBrowser.selectedTab;
-          if (tabContainer) delete tabContainer.selectedItem;
-          isGuardingTab = false;
+          releaseSelection();
 
           if (dragCandidateTab && dragCandidateTab.isConnected) {
             const moveDist = Math.hypot(e.clientX - startX, e.clientY - startY);
@@ -8231,11 +8463,7 @@
       };
 
       const clearGuard = () => {
-        if (isGuardingTab) {
-          if (window.gBrowser) delete window.gBrowser.selectedTab;
-          if (tabContainer) delete tabContainer.selectedItem;
-          isGuardingTab = false;
-        }
+        releaseSelection();
         dragCandidateTab = null;
       };
 
@@ -8257,6 +8485,7 @@
       window.addEventListener("mouseup", onMouseUp, { capture: true });
       window.addEventListener("dragend", clearGuard, { capture: true });
       window.addEventListener("drop", clearGuard, { capture: true });
+      window.addEventListener("blur", clearGuard, { capture: true });
       window.addEventListener("dragstart", onSplitterDragStart, { capture: true });
       window.addEventListener("mousedown", onSplitterMouseDown, { capture: true });
 
@@ -8304,59 +8533,21 @@
           origStartMap.set(target, orig);
           target.startTabDrag = function(event, tab, options = {}) {
             // Release mousedown lock so startTabDrag can run cleanly
-            if (isGuardingTab) {
-              if (window.gBrowser) delete window.gBrowser.selectedTab;
-              if (tabContainer) delete tabContainer.selectedItem;
-              isGuardingTab = false;
-            }
+            releaseSelection();
 
             const currentActiveTab = window.gBrowser?.selectedTab;
             // A tab or split view is dormant if it is not the currently active tab
             const isDormant = tab && tab !== currentActiveTab && !tab.multiselected;
 
             if (isDormant && window.gBrowser) {
-              // Temporarily isolate selectedElements so Firefox only bundles the dragged tab/split view
-              Object.defineProperty(window.gBrowser, "selectedElements", {
-                get: () => [tab],
-                configurable: true
-              });
-
-              // Temporarily suppress selectedTab and selectedItem setters during startTabDrag
-              Object.defineProperty(window.gBrowser, "selectedTab", {
-                get: () => currentActiveTab,
-                set: () => {},
-                configurable: true
-              });
-
-              if (tabContainer) {
-                Object.defineProperty(tabContainer, "selectedItem", {
-                  get: () => currentActiveTab,
-                  set: () => {},
-                  configurable: true
-                });
-              }
-
+              const unlock = lockSelection(currentActiveTab, tab);
               try {
                 return orig.call(this, event, tab, options);
-              } catch (e) {
-                if (Core.getPref(Constants.DEBUG_PREF)) console.warn("[Zentral] startTabDrag snapshot notice:", e);
-                return true;
               } finally {
-                // Restore native prototype getters and setters immediately
-                delete window.gBrowser.selectedElements;
-                delete window.gBrowser.selectedTab;
-                if (tabContainer) {
-                  delete tabContainer.selectedItem;
-                }
+                unlock?.();
               }
             }
-
-            try {
-              return orig.call(this, event, tab, options);
-            } catch (e) {
-              if (Core.getPref(Constants.DEBUG_PREF)) console.warn("[Zentral] startTabDrag fallback:", e);
-              return true;
-            }
+            return orig.call(this, event, tab, options);
           };
         }
       });
@@ -8412,6 +8603,7 @@
         window.removeEventListener("mouseup", onMouseUp, { capture: true });
         window.removeEventListener("dragend", clearGuard, { capture: true });
         window.removeEventListener("drop", clearGuard, { capture: true });
+        window.removeEventListener("blur", clearGuard, { capture: true });
         window.removeEventListener("dragstart", onSplitterDragStart, { capture: true });
         window.removeEventListener("mousedown", onSplitterMouseDown, { capture: true });
         clearGuard();
@@ -8474,7 +8666,7 @@
       }
       
       tabsToGroup.forEach(tab => { if (tab.pinned) gBrowser.unpinTab(tab); });
-      setTimeout(() => {
+      this.#setTimeout(() => {
         const newGroup = document.createXULElement('tab-group');
         newGroup.id = `${Date.now()}-${Math.round(Math.random() * 100)}`;
         newGroup.label = folder.label || "New Group";
@@ -8566,7 +8758,7 @@
       try {
         const colors = JSON.parse(Core.getPref(Constants.TabGroups.PREF_COLORS));
         if (Object.keys(colors).length > 0) {
-          setTimeout(() => {
+          this.#setTimeout(() => {
             Object.entries(colors).forEach(([id, color]) => {
               const group = document.getElementById(id);
               if (group && !group.hasAttribute("split-view-group")) {
@@ -8600,7 +8792,7 @@
      * Schedules debounced state save for tab groups to prevent excessive disk writes.
      */
     scheduleStateSave() {
-      if (this.#isRestoring) return;
+      if (this.#isRestoring || this.#destroyed) return;
       if (this.#state.saveStateTimer) clearTimeout(this.#state.saveStateTimer);
       this.#state.saveStateTimer = setTimeout(() => this.saveTabGroupState(), 1000);
     }
@@ -8609,6 +8801,7 @@
      * Serializes tab group hierarchy, parent relationships, and collapsed states to user preferences.
      */
     saveTabGroupState() {
+      if (this.#isRestoring || this.#destroyed) return;
       try {
         const ss = this.#getSessionStore();
         const currentWs = window.gZenWorkspaces?.activeWorkspace;
@@ -8654,6 +8847,7 @@
         // Identify live groups currently present in the DOM
         const liveGroups = Array.from(document.querySelectorAll("tab-group:not([split-view-group]):not([zen-split-view]):not([is-zen-split])"));
         const liveGroupIds = new Set(liveGroups.map(g => g.id).filter(Boolean));
+        const otherWindows = this.#getOtherWindowGroupIds();
 
         // 1. Prune groups from existingGroups that belonged to currentWs (or had no workspace) but are no longer in the DOM
         for (const gId of Object.keys(existingGroups)) {
@@ -8661,7 +8855,9 @@
           if (!meta) continue;
           const ws = meta.workspaceId;
           const isCurrentWs = !ws || !currentWs || ws === currentWs;
-          if (isCurrentWs && !liveGroupIds.has(gId)) {
+          // Preferences are shared by every browser window. A local absence
+          // proves deletion only after the other windows have been inspected.
+          if (isCurrentWs && !liveGroupIds.has(gId) && otherWindows.complete && !otherWindows.ids.has(gId)) {
             delete mergedGroups[gId];
             delete mergedTabMapping[gId];
           }
@@ -8792,9 +8988,10 @@
      * Restores saved tab group DOM hierarchy, nestings, and collapsed states from user preferences.
      */
     loadTabGroupState() {
+      if (this.#destroyed) return;
       try {
         const stateStr = Core.getPref(Constants.TabGroups.PREF_STATE);
-        const forceCollapse = Core.getPref(Constants.TabGroups.PREF_COLLAPSE_ON_LAUNCH);
+        const forceCollapse = this.#isRestoring && Core.getPref(Constants.TabGroups.PREF_COLLAPSE_ON_LAUNCH);
         if (!stateStr || stateStr === "{}") return;
         const parsed = JSON.parse(stateStr);
         const state = parsed.groups || parsed;
@@ -8893,6 +9090,8 @@
     constructor() {
       /** @type {Element|null} Reference to modal dialog overlay container */
       this.modal = null;
+      this._destroyed = false;
+      this._reportController = null;
     }
     
     /**
@@ -8904,6 +9103,9 @@
      * Module tear down for Sine hot unloading
      */
     destroy() {
+      this._destroyed = true;
+      this._reportController?.abort();
+      this._reportController = null;
       try {
         Core.log("ZentralSettings", "Destroying Settings module...");
         if (this.modal) {
@@ -9011,6 +9213,7 @@
      * Closes the settings modal dialog.
      */
     close() {
+      this._stopShortcutRecording?.();
       if (this.modal) {
         this.modal.setAttribute("data-open", "false");
         this.modal.style.setProperty("display", "none", "important");
@@ -9161,7 +9364,7 @@
       this.updateMatrixUI(cols, rows);
 
       const animType = Core.getPref(Constants.Apps.PREF_ANIMATION_TYPE, "slide") || "slide";
-      const animSpeed = Core.getPref(Constants.Apps.PREF_ANIMATION_SPEED, 450) || 450;
+      const animSpeed = Core.getPref(Constants.Apps.PREF_ANIMATION_SPEED, 450) ?? 450;
       const maxApps = Core.getPref(Constants.Apps.PREF_MAX_APPS, 21) || 21;
 
       const animDropdown = this.modal.querySelector("#zs-anim-type-dropdown");
@@ -9223,7 +9426,7 @@
         get("zs-tg-indicator-type").value = indicatorType;
       }
       
-      const opacity = Core.getPref(Constants.TabGroups.PREF_LABEL_OPACITY, 85) || 85;
+      const opacity = Core.getPref(Constants.TabGroups.PREF_LABEL_OPACITY, 85) ?? 85;
       if (get("zs-tg-opacity")) {
         get("zs-tg-opacity").value = opacity;
         if (get("zs-tg-opacity-badge")) get("zs-tg-opacity-badge").textContent = opacity + "%";
@@ -9361,7 +9564,8 @@
         Core.setPref(Constants.TabGroups.PREF_INDICATOR_TYPE, get("zs-tg-indicator-type").value);
       }
       if (get("zs-tg-opacity")) {
-        Core.setPref(Constants.TabGroups.PREF_LABEL_OPACITY, parseInt(get("zs-tg-opacity").value) || 85);
+        const opacity = Number.parseInt(get("zs-tg-opacity").value, 10);
+        Core.setPref(Constants.TabGroups.PREF_LABEL_OPACITY, Number.isFinite(opacity) ? Math.max(0, Math.min(100, opacity)) : 85);
       }
 
       if (get("zs-pref-logger-enabled")) {
@@ -9388,17 +9592,6 @@
       }
       
       this.close();
-      if (window.Zentral?.Apps) {
-        window.Zentral.Apps.applyHideUtilitySectionPref();
-        window.Zentral.Apps.repositionGrid();
-        window.Zentral.Apps.updateAutohideState();
-        window.Zentral.Apps.renderGrid();
-      }
-      if (window.Zentral?.TabGroups) {
-        window.Zentral.TabGroups.applyChevronPref();
-        window.Zentral.TabGroups.applyIndicatorTypePref();
-        window.Zentral.TabGroups.applyLabelOpacityPref();
-      }
     }
 
     injectStyles() {
@@ -10842,7 +11035,9 @@
         isRecording = false;
         window.removeEventListener("keydown", onKeyDown, true);
         btn.removeAttribute("data-recording");
+        label.textContent = input.value || "None";
       };
+      this._stopShortcutRecording = stopRecording;
 
       const syncUI = (val) => {
         stopRecording();
@@ -10933,7 +11128,7 @@
         <div class="zs-header">
           <div class="zs-title-group">
             <h2 class="zs-title">bzenital Settings</h2>
-            <span class="zs-version-badge">v1.0.2</span>
+            <span class="zs-version-badge">v${Constants.VERSION}</span>
           </div>
           <div class="zs-header-actions">
             <button id="zs-kofi-btn" class="zs-kofi-btn" title="Support Zentral on Ko-fi (ko-fi.com/michele501st)">
@@ -11381,7 +11576,7 @@
                 <div style="display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: 4px; padding-top: 10px; border-top: 1px solid rgba(255, 255, 255, 0.06);">
                   <div style="display: flex; align-items: center; gap: 10px;">
                     <label class="zs-switch">
-                      <input type="checkbox" id="zs-report-attach-log" checked />
+                      <input type="checkbox" id="zs-report-attach-log" />
                       <span class="zs-slider"></span>
                     </label>
                     <div style="display: flex; flex-direction: column;">
@@ -11682,7 +11877,8 @@
       const opacityBadge = this.modal.querySelector("#zs-tg-opacity-badge");
       if (opacitySlider) {
         opacitySlider.addEventListener("input", (e) => {
-          const val = parseInt(e.target.value, 10) || 85;
+          const parsed = Number.parseInt(e.target.value, 10);
+          const val = Number.isFinite(parsed) ? Math.max(0, Math.min(100, parsed)) : 85;
           if (opacityBadge) opacityBadge.textContent = `${val}%`;
           document.documentElement.style.setProperty("--zentral-tabgroup-label-opacity", (val / 100).toFixed(2));
           document.documentElement.setAttribute("zentral-label-opacity-below-85", val < 85 ? "true" : "false");
@@ -11851,11 +12047,12 @@
 
       if (submitReportBtn && titleInput && descInput) {
         submitReportBtn.addEventListener("click", async () => {
+          if (this._destroyed || submitReportBtn.disabled) return;
           saveDiagnosticsPrefsImmediately();
           const title = titleInput.value.trim();
           const desc = descInput.value.trim();
           const category = categoryInput ? categoryInput.value : "bug";
-          const attachLogs = attachLogCheckbox ? attachLogCheckbox.checked : true;
+          const attachLogs = attachLogCheckbox ? attachLogCheckbox.checked : false;
 
           if (!title) {
             titleInput.focus();
@@ -11867,6 +12064,13 @@
             descInput.focus();
             descInput.style.borderColor = "#ef4444";
             setTimeout(() => { if (descInput) descInput.style.borderColor = ""; }, 2000);
+            return;
+          }
+          if (title.length > 240 || desc.length > 12000) {
+            if (statusEl) {
+              statusEl.style.display = "inline";
+              statusEl.textContent = "Use at most 240 characters for the title and 12,000 for the description.";
+            }
             return;
           }
 
@@ -11883,6 +12087,7 @@
             statusEl.textContent = "Connecting to GitHub...";
           }
 
+          try {
           // 1. Gather diagnostic logs & system metadata
           let logContent = "";
           if (attachLogs) {
@@ -11903,7 +12108,7 @@
           }
 
           const systemInfo = {
-            zentralVersion: "v1.0.2",
+            zentralVersion: `v${Constants.VERSION}`,
             zenVersion: navigator.userAgent,
             platform: navigator.platform || "Desktop",
             windowSize: `${window.innerWidth}x${window.innerHeight}`,
@@ -11912,14 +12117,24 @@
           };
 
           // 2. Attempt background submission to Cloudflare Worker endpoint if configured
-          let endpoint = Core.getPref(Constants.Diagnostics.PREF_REPORT_ENDPOINT)?.trim();
+          let endpoint = Core.getPref(Constants.Diagnostics.PREF_REPORT_ENDPOINT);
+          endpoint = typeof endpoint === "string" ? endpoint.trim() : "";
+          try {
+            const endpointUrl = new URL(endpoint);
+            if (endpointUrl.protocol !== "https:" || endpointUrl.username || endpointUrl.password ||
+                endpointUrl.hostname === "zentral-issue-reporter.michele-pierini.workers.dev") endpoint = "";
+          } catch (_) { endpoint = ""; }
           let submitted = false;
 
           if (endpoint) {
+            const controller = new AbortController();
+            this._reportController = controller;
+            const timeout = setTimeout(() => controller.abort(), 15000);
             try {
               const resp = await fetch(endpoint, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
+                signal: controller.signal,
                 body: JSON.stringify({
                   title,
                   description: desc,
@@ -11928,14 +12143,28 @@
                   logs: sendLogContent
                 })
               });
-
+              if (this._destroyed) return;
               const result = await resp.json();
+              if (this._destroyed) return;
               if (resp.ok && result.success) {
+                const issueUrl = new URL(result.issueUrl);
+                if (issueUrl.origin !== "https://github.com" || issueUrl.username || issueUrl.password ||
+                    !Number.isSafeInteger(result.issueNumber) || result.issueNumber <= 0 ||
+                    !new RegExp(`^/[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+/issues/${result.issueNumber}$`).test(issueUrl.pathname)) {
+                  throw new Error("Reporter returned an invalid issue URL");
+                }
                 submitted = true;
                 if (statusEl) {
                   statusEl.style.display = "inline";
                   statusEl.style.color = "#10b981";
-                  statusEl.innerHTML = `<a href="${result.issueUrl}" target="_blank" style="color: #10b981; text-decoration: underline;">✓ Issue #${result.issueNumber} created!</a>`;
+                  const link = document.createElementNS("http://www.w3.org/1999/xhtml", "a");
+                  link.href = issueUrl.origin + issueUrl.pathname;
+                  link.target = "_blank";
+                  link.rel = "noopener noreferrer";
+                  link.style.color = "#10b981";
+                  link.style.textDecoration = "underline";
+                  link.textContent = `Issue #${result.issueNumber} created!`;
+                  statusEl.replaceChildren(link);
                 }
                 titleInput.value = "";
                 descInput.value = "";
@@ -11943,22 +12172,31 @@
                 console.warn("[Zentral-Report] Worker returned error:", resp.status, result);
               }
             } catch (postErr) {
+              if (this._destroyed) return;
               console.warn("[Zentral-Report] Worker submission failed, falling back to Web:", postErr);
+            } finally {
+              clearTimeout(timeout);
+              if (this._reportController === controller) this._reportController = null;
             }
           }
 
           // 3. Fallback: If not submitted via worker, open pre-filled GitHub issue in new tab & copy logs to clipboard
           if (!submitted) {
+            if (this._destroyed) return;
+            let logsCopied = false;
             if (logContent) {
               try {
                 const clipboardHelper = Cc["@mozilla.org/widget/clipboardhelper;1"]?.getService(Ci.nsIClipboardHelper);
                 if (clipboardHelper) {
                   clipboardHelper.copyString(logContent);
+                  logsCopied = true;
                 } else if (navigator.clipboard?.writeText) {
-                  navigator.clipboard.writeText(logContent);
+                  await navigator.clipboard.writeText(logContent);
+                  logsCopied = true;
                 }
               } catch (_) {}
             }
+            if (this._destroyed) return;
 
             let ghBody = `### 📝 Description\n${desc}\n\n`;
             ghBody += `### 🖥️ Environment\n`;
@@ -11966,14 +12204,14 @@
             ghBody += `- **Zen Build:** ${systemInfo.zenVersion}\n`;
             ghBody += `- **OS / Platform:** ${systemInfo.platform}\n`;
             ghBody += `- **Window / DPR:** ${systemInfo.windowSize} (DPR: ${systemInfo.dpr})\n\n`;
-            if (logContent) {
+            if (logsCopied) {
               ghBody += `*(Diagnostic log copied to your clipboard — paste below if relevant)*\n\n`;
             }
 
-            const ghUrl = `https://github.com/Michele501st/Zentral-Sine/issues/new?title=${encodeURIComponent(`[${category.toUpperCase()}] ${title}`)}&body=${encodeURIComponent(ghBody)}&labels=${encodeURIComponent(category)}`;
+            const ghUrl = `https://github.com/TH0p/BZENITAL/issues/new?title=${encodeURIComponent(`[${category.toUpperCase()}] ${title}`)}&body=${encodeURIComponent(ghBody)}&labels=${encodeURIComponent(category)}`;
             
             if (window.gBrowser?.addTab) {
-              window.gBrowser.addTab(ghUrl, { triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal() });
+              window.gBrowser.selectedTab = window.gBrowser.addTab(ghUrl, { triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal() });
             } else {
               window.open(ghUrl, "_blank");
             }
@@ -11981,14 +12219,23 @@
             if (statusEl) {
               statusEl.style.display = "inline";
               statusEl.style.color = "#60a5fa";
-              statusEl.textContent = logContent ? "✓ Opened in GitHub (Log copied to clipboard!)" : "✓ Opened in GitHub!";
+              statusEl.textContent = logsCopied ? "Opened in GitHub (log copied to clipboard)" : "Opened in GitHub";
             }
           }
-
+          } catch (error) {
+            if (this._destroyed) return;
+            console.error("[Zentral-Report] Could not prepare report:", error);
+            if (statusEl) {
+              statusEl.style.display = "inline";
+              statusEl.style.color = "#ef4444";
+              statusEl.textContent = "Could not prepare the report. Your text was preserved; please try again.";
+            }
+          } finally {
           submitReportBtn.disabled = false;
           submitReportBtn.style.opacity = "1";
           submitReportBtn.style.pointerEvents = "auto";
           submitReportBtn.innerHTML = origBtnHTML;
+          }
         });
       }
 
@@ -12059,9 +12306,75 @@
     }
   }
 
-  const Apps = new ZentralApps();
-  const TabGroups = new ZentralTabGroups();
+  let Apps = new ZentralApps();
+  let TabGroups = new ZentralTabGroups();
   const Settings = new ZentralSettings();
+  const cleanupLogger = window._zentralLoggerCleanup;
+  let initialized = false;
+  let destroyed = false;
+  let startupObserver = null;
+  let appsRunning = false;
+  let groupsRunning = false;
+  let configPending = false;
+  const changedPrefs = new Set();
+  const stopModule = module => {
+    try { module.destroy?.(); } catch (error) { console.error("[Zentral] Module cleanup failed:", error); }
+  };
+  const startModule = module => {
+    try {
+      module.init();
+      return true;
+    } catch (error) {
+      console.error("[Zentral] Module startup failed:", error);
+      stopModule(module);
+      return false;
+    }
+  };
+
+  const applyConfigChanges = () => {
+    configPending = false;
+    if (destroyed || !initialized) return;
+    const keys = new Set(changedPrefs);
+    changedPrefs.clear();
+
+    const appsEnabled = Core.getPref(Constants.Apps.PREF_ENABLED) !== false;
+    if (appsEnabled !== appsRunning) {
+      if (appsEnabled) {
+        Apps = new ZentralApps();
+        window.Zentral.Apps = Apps;
+        appsRunning = startModule(Apps);
+      } else {
+        stopModule(Apps);
+        appsRunning = false;
+      }
+    }
+    const groupsEnabled = Core.getPref(Constants.TabGroups.PREF_ENABLED) !== false;
+    if (groupsEnabled !== groupsRunning) {
+      if (groupsEnabled) {
+        TabGroups = new ZentralTabGroups();
+        window.Zentral.TabGroups = TabGroups;
+        groupsRunning = startModule(TabGroups);
+      } else {
+        stopModule(TabGroups);
+        groupsRunning = false;
+      }
+    }
+
+    if (appsRunning && [...keys].some(key => key.startsWith("zen.workspace.apps."))) {
+      if (keys.has(Constants.Apps.PREF_APPS)) Apps.loadApps?.();
+      if (keys.has(Constants.Apps.PREF_UTILITY_ORDER)) Apps.loadUtilityOrder?.();
+      Apps.applyHideUtilitySectionPref?.();
+      Apps.repositionGrid?.();
+      Apps.updateAutohideState?.();
+      Apps.renderGrid?.();
+      if (Apps.isPanelOpen?.()) Apps.positionPanel?.();
+    }
+    if (groupsRunning) {
+      if (keys.has(Constants.TabGroups.PREF_SHOW_CHEVRON)) TabGroups.applyChevronPref?.();
+      if (keys.has(Constants.TabGroups.PREF_INDICATOR_TYPE)) TabGroups.applyIndicatorTypePref?.();
+      if (keys.has(Constants.TabGroups.PREF_LABEL_OPACITY)) TabGroups.applyLabelOpacityPref?.();
+    }
+  };
 
   /**
    * 6.1 Global Namespace Definition
@@ -12073,17 +12386,37 @@
     TabGroups,
     Settings,
     Init: () => {
-      Core.log("bzenital", "Booting Master Script (v1.0.2)...");
-      Apps.init();
-      TabGroups.init();
-      Settings.init();
+      if (destroyed || initialized) return;
+      Core.init();
+      initialized = true;
+      Core.on("configChanged", ({ key }) => {
+        changedPrefs.add(key);
+        if (configPending) return;
+        configPending = true;
+        queueMicrotask(applyConfigChanges);
+      });
+      Core.log("bzenital", `Booting Master Script (v${Constants.VERSION})...`);
+      appsRunning = startModule(Apps) && Core.getPref(Constants.Apps.PREF_ENABLED) !== false;
+      groupsRunning = startModule(TabGroups) && Core.getPref(Constants.TabGroups.PREF_ENABLED) !== false;
+      startModule(Settings);
       window.ZentralSettingsInstance = Settings;
     },
     Destroy: () => {
+      if (destroyed) return;
+      destroyed = true;
       Core.log("bzenital", "Unloading and destroying bzenital mod...");
-      if (Apps.destroy) Apps.destroy();
-      if (TabGroups.destroy) TabGroups.destroy();
-      if (Settings.destroy) Settings.destroy();
+      window.removeEventListener("unload", performUnload);
+      if (startupObserver) {
+        try { Services.obs.removeObserver(startupObserver, "browser-delayed-startup-finished"); } catch (_) {}
+        startupObserver = null;
+      }
+      Core.destroy();
+      for (const module of [Settings, Apps, TabGroups]) {
+        stopModule(module);
+      }
+      try { cleanupLogger?.(); } catch (error) { console.error("[Zentral] Logger cleanup failed:", error); }
+      changedPrefs.clear();
+      delete window.ZentralSettingsInstance;
       window.ZentralInitialized = false;
       delete window.Zentral;
     }
@@ -12091,13 +12424,12 @@
 
   const performUnload = () => {
     try {
-      if (window.Zentral && window.Zentral.Destroy) {
-        window.Zentral.Destroy();
-      }
+      if (!destroyed) zentral.Destroy();
     } catch(e) {
       console.error("[Zentral] Error during unload destroy:", e);
     }
   };
+  const zentral = window.Zentral;
 
   // Sine Mod engine dynamically unloads scripts
   if (typeof window.addUnloadListener === "function") {
@@ -12116,27 +12448,29 @@
     if (typeof gBrowserInit !== "undefined" && gBrowserInit.delayedStartupFinished) {
       window.Zentral.Init();
     } else {
-      let booted = false;
       const safeBoot = () => {
-        if (booted) return;
-        booted = true;
+        if (destroyed || initialized) return;
         try { 
-          window.Zentral.Init(); 
+          zentral.Init();
         } catch (err) { console.error("[Zentral] Boot error:", err); }
       };
 
       if (typeof Services !== "undefined" && Services.obs) {
-        Services.obs.addObserver(function observer(subject, topic) {
+        startupObserver = function observer(subject, topic) {
           if (topic === "browser-delayed-startup-finished" && subject === window) {
             Services.obs.removeObserver(observer, topic);
+            startupObserver = null;
             safeBoot();
           }
-        }, "browser-delayed-startup-finished", false);
+        };
+        Services.obs.addObserver(startupObserver, "browser-delayed-startup-finished", false);
+      } else {
+        safeBoot();
       }
     }
   } catch (e) {
     console.error("[Zentral] Startup observer error, forcing immediate Init():", e);
-    try { window.Zentral.Init(); } catch (_) {}
+    try { zentral.Init(); } catch (_) {}
   }
 
 })();
