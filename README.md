@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="theme.json"><img src="https://img.shields.io/badge/Version-v2.3.1-4A72FF.svg?style=flat-square" alt="Version"></a>
+  <a href="theme.json"><img src="https://img.shields.io/badge/Version-v2.4.0-4A72FF.svg?style=flat-square" alt="Version"></a>
   <a href="https://zen-browser.app/"><img src="https://img.shields.io/badge/Zen_Browser-Compatible-9B51E0.svg?style=flat-square" alt="Zen Browser"></a>
   <a href="theme.json"><img src="https://img.shields.io/badge/Sine_Engine-Native_Mod-00C853.svg?style=flat-square" alt="Sine Engine"></a>
   <a href="https://ko-fi.com/michele501st"><img src="https://img.shields.io/badge/Support-Ko--fi-FF5E5B.svg?style=flat-square&logo=ko-fi&logoColor=white" alt="Support on Ko-fi"></a>
@@ -20,6 +20,11 @@
 ---
 
 ## 📖 Overview
+
+This BZENITAL fork includes the original Zentral 1.1.0 updates while retaining
+its compact centered App Bar, custom motion and safeguards. See the
+[upstream integration notes](docs/upstream-sync.md) for the source revision,
+preserved changes and validation.
 
 **Zentral** unifies your favorite communication tools, web applications, and tabs into a cohesive, fluidly animated sidebar experience.
 <p align="center">
@@ -84,6 +89,7 @@ Keep your essential web apps (Discord, WhatsApp, Reddit, Spotify, Notion, YouTub
   - App Bar matches Zen Browser's active theme gradient and film grain texture with rounded panel borders.
 - **🎛️ Full Panel Controls**:
   - **Pin / Unpin**: Keep panels persistently open side-by-side with main web content.
+  - **🪟 Detachable Floating Panels**: Drag the grabber in the control pill to detach panels into freely floating, movable windows within page space with auto-pinned state, dual-sided control pill, 8-directional edge/corner resizing, and drag-to-edge re-docking with ghost preview.
   - **Dynamic Drag Resizing**: Smooth draggable edge resize handle with per-app width memory.
   - **Expand to Full Width**: Maximize panels instantly.
   - **Refresh App**: Reloads the App when necessary.
@@ -217,6 +223,7 @@ Zentral-Sine/
 ├── chrome.css            # Stylesheet overrides (glassmorphism, layout, animations)
 ├── JS/
 │   ├── Zentral.uc.js     # Master userChromeJS script (Apps, TabGroups, ColorPicker)
+│   ├── zentral_panel_geometry.uc.js # Panel geometry and docking helpers
 │   └── zentral_logger.uc.js # High-performance diagnostic logging engine
 ├── assets/
 │   ├── Zentral Logo.png  # High-resolution raster logo

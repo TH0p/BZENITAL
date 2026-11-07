@@ -7,6 +7,7 @@ const test = require('node:test');
 const source = fs.readFileSync(path.join(__dirname, '../JS/Zentral.uc.js'), 'utf8');
 const classSource = source.slice(source.indexOf('class ZentralApps {'), source.indexOf('class ZentralTabGroups {'));
 const constantSource = source.slice(source.indexOf('const Constants = {'), source.indexOf('const WELL_KNOWN_SERVICES ='));
+const geometrySource = source.slice(source.indexOf('const ZentralGeometryBuiltin ='), source.indexOf('class ZentralApps {'));
 
 class Events {
   listeners = new Map();
@@ -34,6 +35,10 @@ class Element extends Events {
   constructor(tag = 'div') {
     super();
     this.tagName = tag;
+    if (tag === 'browser') {
+      this.progressListeners = new Set();
+      this.webProgress = { isLoadingDocument: false };
+    }
     this.classList = {
       contains: (name) => this.className.split(/\s+/).includes(name),
       add: (name) => { if (!this.classList.contains(name)) this.className += ` ${name}`; },
@@ -73,6 +78,7 @@ class Element extends Events {
   matches(selector) {
     if (selector === ':hover') return false;
     if (selector.startsWith('#')) return this.id === selector.slice(1);
+    if (selector === 'browser') return this.tagName === 'browser';
     const match = selector.match(/^\.([\w-]+)(?:\[data-app-id(?:="(.*)")?\])?$/);
     return !!match && this.classList.contains(match[1]) && (!selector.includes('[data-app-id') ||
       (match[2] === undefined ? this.dataset.appId !== undefined : this.dataset.appId === match[2]));
@@ -89,8 +95,21 @@ class Element extends Events {
     visit(this); return result;
   }
   querySelector(selector) { return this.querySelectorAll(selector)[0] || null; }
-  loadURI(uri) { this.loadedURI = uri.spec; }
-  getBoundingClientRect() { return { width: 240, height: 600, top: 40, bottom: 640, left: 0, right: 240 }; }
+  loadURI(uri) { this.loadedURI = uri.spec; this.currentURI = uri; this.webProgress.isLoadingDocument = true; }
+  addProgressListener(listener) { this.progressListeners.add(listener); }
+  removeProgressListener(listener) { this.progressListeners.delete(listener); }
+  focus() { this.focused = true; }
+  select() { this.selected = true; }
+  blur() { this.focused = false; }
+  getBoundingClientRect() {
+    if (this.rect) return this.rect;
+    const panel = this.id === 'zen-app-panel-root';
+    const width = panel ? parseFloat(this.style.width) || 240 : 240;
+    const height = panel ? parseFloat(this.style.height) || 600 : 600;
+    const top = panel ? parseFloat(this.style.top) || 40 : 40;
+    const left = panel ? parseFloat(this.style.left) || 0 : 0;
+    return { width, height, top, bottom: top + height, left, right: left + width };
+  }
 }
 
 function harness(apps = [{ id: 'first', url: 'https://example.com', title: 'Example' }]) {
@@ -129,13 +148,15 @@ function harness(apps = [{ id: 'first', url: 'https://example.com', title: 'Exam
   window.MutationObserver = Observer;
   const errors = [];
   const context = vm.createContext({
-    window, document, URL, Map, Set, ResizeObserver: Observer, MutationObserver: Observer,
+    window, document, URL, URLSearchParams, Map, Set, ResizeObserver: Observer, MutationObserver: Observer,
+    ChromeUtils: { generateQI: () => function () { return this; } },
+    Ci: { nsIWebProgressListener: { STATE_START: 1, STATE_STOP: 2 }, nsIWebProgress: { NOTIFY_STATE_WINDOW: 1, NOTIFY_STATE_NETWORK: 2, NOTIFY_LOCATION: 4 } },
     gBrowser: { tabContainer }, performance: { now: () => 100 },
     createSVGElement: () => new Element('svg'), SVG_STRINGS: {}, WELL_KNOWN_SERVICES: {},
     getComputedStyle: () => ({ paddingTop: '0', paddingBottom: '0', rowGap: '0', position: 'relative' }),
     Core: { getPref: (key, fallback) => prefs.has(key) ? prefs.get(key) : fallback,
       setPref: (key, value) => prefs.set(key, value), getNativePref: (_, fallback) => fallback,
-      log() {}, emit() {} },
+      log() {}, emit() {}, updateEffectiveTheme() {} },
     Services: { io: { newURI: url => ({ spec: url }) },
       scriptSecurityManager: { createContentPrincipal: uri => ({ uri }) },
       prefs: { addObserver(key, fn) {
@@ -149,7 +170,7 @@ function harness(apps = [{ id: 'first', url: 'https://example.com', title: 'Exam
     clearInterval: id => intervals.delete(id),
     console: { error: (...args) => errors.push(args), warn() {} },
   });
-  const Klass = vm.runInContext(`${constantSource}\n${classSource}\nZentralApps`, context);
+  const Klass = vm.runInContext(`${constantSource}\n${geometrySource}\n${classSource}\nZentralApps`, context);
   const instance = new Klass();
   const runTimers = async delay => {
     const pending = [...timers].filter(([, timer]) => delay === undefined || timer.delay === delay);
@@ -207,7 +228,7 @@ test('background browser creation never displays a second app inside the open pa
   h.instance.openPanel({ id: 'first', url: 'https://example.com' });
   const { browser } = h.instance.getOrCreateAppBrowser({ id: 'second', url: 'https://second.example' });
   assert.equal(browser.style.display, 'none');
-  const first = h.document.getElementById('zen-app-panel-slider').children[0];
+  const first = h.document.getElementById('zen-app-panel-slider').querySelector('browser');
   assert.equal(first.style.display, '');
 });
 
@@ -233,7 +254,7 @@ test('preload sequence skips apps removed during its stagger delay', async () =>
   await h.runTimers(1500);
   await h.runTimers(1500);
   await done;
-  assert.equal(h.document.getElementById('zen-app-panel-slider').children.length, 1);
+  assert.equal(h.document.getElementById('zen-app-panel-slider').querySelectorAll('browser').length, 1);
 });
 
 test('destroy stops a running preload sequence even when the same instance restarts', async () => {
@@ -248,7 +269,7 @@ test('destroy stops a running preload sequence even when the same instance resta
   await h.runTimers(1500);
   await h.runTimers(1500);
   await done;
-  assert.equal(h.document.getElementById('zen-app-panel-slider').children.length, 0);
+  assert.equal(h.document.getElementById('zen-app-panel-slider').querySelectorAll('browser').length, 0);
 });
 
 test('malformed app titles cannot prevent rendering other saved apps', () => {
@@ -271,7 +292,7 @@ test('external app removal closes its panel and releases the old browser', async
   const h = harness();
   h.instance.init();
   h.instance.openPanel({ id: 'first', url: 'https://example.com' });
-  const browser = h.document.getElementById('zen-app-panel-slider').firstChild;
+  const browser = h.document.getElementById('zen-app-panel-slider').querySelector('browser');
   h.prefs.set('zen.workspace.apps.sidebar.apps', '[]');
   h.instance.loadApps();
   await h.runTimers(470);
@@ -284,7 +305,7 @@ test('changing a saved app URL replaces its browser while unrelated edits retain
   const h = harness();
   h.instance.init();
   h.instance.openPanel({ id: 'first', url: 'https://example.com' });
-  const old = h.document.getElementById('zen-app-panel-slider').firstChild;
+  const old = h.document.getElementById('zen-app-panel-slider').querySelector('browser');
   h.prefs.set('zen.workspace.apps.sidebar.apps', '[{"id":"first","url":"https://example.com","title":"Renamed"}]');
   h.instance.loadApps();
   assert.equal(old.isConnected, true);
@@ -292,7 +313,7 @@ test('changing a saved app URL replaces its browser while unrelated edits retain
   h.instance.loadApps();
   h.instance.refreshApp('first');
   assert.equal(old.isConnected, false);
-  assert.equal(h.document.getElementById('zen-app-panel-slider').firstChild.loadedURI, 'https://new.example');
+  assert.equal(h.document.getElementById('zen-app-panel-slider').querySelector('browser').loadedURI, 'https://new.example');
 });
 
 test('duplicate saved IDs cannot create tiles that control the same browser', () => {
@@ -343,4 +364,123 @@ test('resizing an expanded panel continues from its visible width without a jump
   h.instance.startResize({ button: 0, clientX: 500, preventDefault() {} });
   h.instance.onDrag({ clientX: 510 });
   assert.equal(h.document.getElementById('zen-app-panel-root').style.width, '946px');
+});
+
+test('upstream app options survive save and reload', () => {
+  const h = harness([{ id: 'first', url: 'https://example.com', mobile: true, zoom: 1.4, flipSide: true }]);
+  h.instance.init();
+  h.instance.saveApps();
+  const [app] = JSON.parse(h.prefs.get('zen.workspace.apps.sidebar.apps'));
+  assert.equal(app.mobile, true);
+  assert.equal(app.zoom, 1.4);
+  assert.equal(app.flipSide, true);
+});
+
+test('opening docked and floating panels keeps the custom bar expansion synchronized', () => {
+  const h = harness();
+  h.instance.init();
+  h.instance.openPanel({ id: 'first', url: 'https://example.com' });
+  h.runFrames();
+  assert.equal(h.document.documentElement.getAttribute('zentral-vb-expanded'), 'true');
+  h.instance.detachPanel();
+  h.instance.closePanel();
+  h.instance.openPanel({ id: 'first', url: 'https://example.com' });
+  assert.equal(h.document.documentElement.getAttribute('zentral-vb-expanded'), 'true');
+});
+
+test('page loads use the latest zoom after preference records have been replaced', () => {
+  const h = harness([{ id: 'first', url: 'https://example.com', zoom: 1.2 }]);
+  h.instance.init();
+  h.instance.refreshApp('first');
+  const browser = h.document.querySelector('browser');
+  h.prefs.set('zen.workspace.apps.sidebar.apps', '[{"id":"first","url":"https://example.com","zoom":2}]');
+  h.instance.loadApps();
+  browser.dispatch('load');
+  assert.equal(browser.fullZoom, 2);
+});
+
+test('removing an app detaches its Gecko progress listener and loading timer', () => {
+  const h = harness();
+  h.instance.init();
+  h.instance.openPanel({ id: 'first', url: 'https://example.com' });
+  const browser = h.document.querySelector('browser');
+  assert.equal(browser.progressListeners.size, 1);
+  h.instance.removeApp('first');
+  assert.equal(browser.progressListeners.size, 0);
+  assert.equal([...h.timers.values()].filter(timer => timer.delay === 8000).length, 0);
+});
+
+for (const gesture of ['drag', 'resize']) {
+  test(`destroy cancels active floating ${gesture} handlers and temporary UI timers`, () => {
+    const h = harness();
+    h.instance.init();
+    h.instance.openPanel({ id: 'first', url: 'https://example.com' });
+    h.instance.detachPanel();
+    const event = { button: 0, clientX: 300, clientY: 100, preventDefault() {}, stopPropagation() {} };
+    if (gesture === 'drag') h.instance.beginDetachGesture(event);
+    else h.instance.startFloatResize('se', event);
+    h.instance.destroy();
+    assert.equal([...h.window.listeners.values()].reduce((n, entries) => n + entries.size, 0), 0);
+    assert.equal(h.timers.size, 0);
+  });
+}
+
+test('pending redock cannot modify a replacement UI after destroy and reinit', async () => {
+  const h = harness();
+  h.instance.init();
+  h.instance.openPanel({ id: 'first', url: 'https://example.com' });
+  h.instance.detachPanel();
+  const done = h.instance.redockPanel('sidebar');
+  h.instance.destroy();
+  h.instance.init();
+  const root = h.document.getElementById('zen-app-panel-root');
+  await h.runTimers(250);
+  await done;
+  assert.equal(root.style.width, undefined);
+  assert.equal(h.instance.isPanelOpen(), false);
+});
+
+test('expanding an app docked opposite the sidebar uses the free content width', () => {
+  const h = harness([{ id: 'first', url: 'https://example.com', flipSide: true }]);
+  h.instance.init();
+  h.instance.openPanel({ id: 'first', url: 'https://example.com', flipSide: true });
+  h.instance.toggleExpand();
+  assert.equal(h.document.getElementById('zen-app-panel-root').style.width, '936px');
+});
+
+test('opposite docking in vertical-bar mode stays outside the native sidebar', () => {
+  const h = harness([{ id: 'first', url: 'https://example.com', flipSide: true }]);
+  h.prefs.set('zen.workspace.apps.sidebar.placement', 'vertical-bar');
+  h.instance.init();
+  h.instance.openPanel({ id: 'first', url: 'https://example.com', flipSide: true });
+  assert.equal(h.document.getElementById('zen-app-panel-root').style.left, '252px');
+});
+
+test('navbar address shortcut does not steal keyboard focus from settings', () => {
+  const h = harness();
+  h.prefs.set('zen.workspace.apps.sidebar.show_navbar', true);
+  h.instance.init();
+  h.instance.openPanel({ id: 'first', url: 'https://example.com' });
+  const modal = h.document.body.appendChild(new Element());
+  modal.id = 'zentral-settings-modal'; modal.setAttribute('data-open', 'true');
+  let prevented = false;
+  h.window.dispatch('keydown', { key: 'l', ctrlKey: true, metaKey: false,
+    preventDefault() { prevented = true; }, stopPropagation() {} });
+  assert.equal(prevented, false);
+});
+
+test('saving a navbar address without a scheme keeps a valid app URL', () => {
+  const h = harness(); h.instance.init();
+  h.instance.openPanel({ id: 'first', url: 'https://example.com' });
+  h.document.querySelector('.zen-app-nav-url-input').value = 'new.example.com/path';
+  h.instance.navUpdateAppUrl();
+  assert.equal(JSON.parse(h.prefs.get('zen.workspace.apps.sidebar.apps'))[0].url, 'https://new.example.com/path');
+});
+
+test('saving an invalid navbar address preserves the previous app URL', () => {
+  const h = harness(); h.instance.init();
+  h.instance.openPanel({ id: 'first', url: 'https://example.com' });
+  h.document.querySelector('.zen-app-nav-url-input').value = 'https://bad host';
+  h.instance.navUpdateAppUrl();
+  assert.equal(JSON.parse(h.prefs.get('zen.workspace.apps.sidebar.apps'))[0].url, 'https://example.com');
 });

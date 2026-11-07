@@ -2,6 +2,11 @@
 
 Audit date: 2026-11-07. Baseline: `9aac890d7b61a418c6a4d2966504a4325db00de7`.
 
+Version 2.4.0 also integrates Zentral 1.1.0; the exact source revision and
+preserved fork changes are listed in [upstream-sync.md](upstream-sync.md).
+Final integration checks: 112/112 Node tests passed, all scripts passed syntax
+checks, and the isolated Zen browser smoke test passed.
+
 ## Scope and checks
 
 Run `npm test` for the regression suite and `npm run check` for script syntax.
@@ -23,6 +28,10 @@ Covered failures:
   popup observers, unique exports and stream cleanup on errors.
 - Issue validation, payload limits, endpoint/response URL validation, cancellation,
   report drafts, DOM-safe links and configurable worker destinations.
+- Upstream panel geometry, docking, all resize directions and equivalent behavior
+  of the external geometry module and embedded fallback.
+- App-tab isolation never detaches a group created after opening a tab and ignores
+  focus retained by a closed panel; resizing interrupts the detachment animation.
 
 ## Real-browser smoke test
 
@@ -34,7 +43,9 @@ node tools/zen-smoke.cjs "C:\Program Files\Zen Browser\zen.exe"
 
 The test starts a separate headless Zen process with a new temporary profile,
 loads the scripts/styles, checks startup/settings, writes preferences with native
-Sine-compatible types, toggles modules, creates a native tab group, verifies that
+Sine-compatible types, tests navigation/zoom, verifies the mobile User-Agent using
+a local HTTP server, detaches/resizes/re-docks a panel, checks the compact centered
+App Bar's expansion/collapse, toggles modules, creates a native tab group, verifies that
 disabling Zentral preserves its tabs/group, and unloads the mod. It closes only
 the process it started and removes only the temporary profile it created.
 It never reads, updates or restarts the user's existing browser profile.

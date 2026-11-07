@@ -16,6 +16,7 @@ class Surface {
   getAttribute(key) { return this.attrs.get(key) || ''; }
   hasAttribute(key) { return this.attrs.has(key); }
   removeAttribute(key) { this.attrs.delete(key); }
+  replaceChildren(...children) { this.children = []; for (const child of children) this.appendChild(child); }
   querySelectorAll() { return []; }
   querySelector() { return null; }
   closest() { return null; }
@@ -52,7 +53,7 @@ function harness() {
   document.getElementById = id => elements.get(id) || null;
   const observers = [];
   class MutationObserver { constructor(callback) { this.callback = callback; observers.push(this); } observe() {} disconnect() { this.disconnected = true; } }
-  const prefs = new Map([['enabled', true], ['state', '{}'], ['colors', '{}']]);
+  const prefs = new Map([['enabled', true], ['state', '{}'], ['colors', '{}'], ['thumbnails', true]]);
   const timers = new Map(); let timerId = 0;
   const setTimeout = fn => { timers.set(++timerId, fn); return timerId; };
   const clearTimeout = id => timers.delete(id);
@@ -64,9 +65,9 @@ function harness() {
   const Services = { prefs: { addObserver() {}, removeObserver() {} }, obs: { addObserver() {}, removeObserver() {} } };
   const deletedValues = [];
   const SessionStore = { getCustomTabValue() { return ''; }, setCustomTabValue() {}, deleteCustomTabValue(tab, key) { deletedValues.push([tab, key]); } };
-  const Constants = { TabGroups: { PREF_ENABLED: 'enabled', PREF_STATE: 'state', PREF_COLORS: 'colors', PREF_COLLAPSE_ON_LAUNCH: 'collapse' } };
+  const Constants = { TabGroups: { PREF_ENABLED: 'enabled', PREF_STATE: 'state', PREF_COLORS: 'colors', PREF_COLLAPSE_ON_LAUNCH: 'collapse', PREF_THUMBNAILS: 'thumbnails' } };
   const errors = [];
-  const Core = { getPref: key => prefs.get(key), setPref: (key, value) => prefs.set(key, value), getNativePref: () => true, log() {}, emit() {}, error(...args) { errors.push(args); } };
+  const Core = { getPref: key => prefs.get(key), setPref: (key, value) => prefs.set(key, value), getNativePref: () => true, isEffectiveDarkMode: () => false, updateEffectiveTheme() {}, log() {}, emit() {}, error(...args) { errors.push(args); } };
   const context = vm.createContext({ window, document, MutationObserver, Node: { ELEMENT_NODE: 1 }, Core, Constants, Services, SessionStore, gBrowser, setTimeout, clearTimeout, console: { error(...args) { errors.push(args); }, warn(...args) { errors.push(args); } } });
   vm.runInContext(`${classSource}\nthis.Groups = ZentralTabGroups;`, context);
   const groups = new context.Groups();
@@ -74,7 +75,7 @@ function harness() {
     for (const method of ['clearStoredColorData', 'loadSavedColors', 'reconstructSavedGroups', 'injectStyles', 'setupObserver', 'setupPopupSuppression', 'addFolderContextMenuItems', 'removeBuiltinTabGroupMenu', 'enhanceTabContextMenu', 'initTabDragSelectionGuard', 'processExistingGroups', 'setupTabOpenHandler', 'hookAddTab']) groups[method] = () => {};
     groups.init();
   }
-  return { groups, window, document, tabContainer, menu, prefs, timers, observers, gBrowser, Services, init, errors, deletedValues };
+  return { groups, window, document, tabContainer, menu, prefs, timers, observers, gBrowser, Services, Core, elements, init, errors, deletedValues };
 }
 
 test('sanitization preserves an untitled parent containing a populated child', () => {
@@ -358,3 +359,78 @@ test('unload restores native label context and an empty boolean hidden attribute
   assert.equal(marker.hasAttribute('hidden'), true);
   assert.equal(marker.getAttribute('hidden'), '');
 });
+
+test('the tooltip refreshes its effective theme before opening and cancels pending hover work on unload', () => {
+  const h = harness(); const { group } = groupedTab('g', 't');
+  const label = new Element(); label.className = 'tab-group-label-container';
+  const text = new Element('label'); text.className = 'tab-group-label'; label.appendChild(text); group.appendChild(label);
+  const tooltip = h.elements.get('zentral-tabgroup-tooltip');
+  const container = new Element(); h.elements.set('zentral-tabgroup-tooltip-container', container);
+  let theme = 'dark'; let opened = 0;
+  h.Core.updateEffectiveTheme = () => tooltip.setAttribute('zentral-effective-theme', theme);
+  tooltip.openPopup = () => opened++;
+  for (const method of ['updateCollapsedLabel', 'addContextMenu', 'checkAndApplyFirstTimeGroupColor', 'updateGroupSubGroupsBadge']) h.groups[method] = () => {};
+  h.groups.getDirectTabs = () => [];
+  h.groups.processGroup(group);
+  label.fire('mouseenter');
+  assert.equal(tooltip.getAttribute('zentral-effective-theme'), 'dark');
+  theme = 'light';
+  for (const [id, callback] of [...h.timers]) { h.timers.delete(id); callback(); }
+  assert.equal(tooltip.getAttribute('zentral-effective-theme'), 'light');
+  assert.equal(opened, 1);
+  label.fire('mouseenter'); h.groups.destroy(); theme = 'dark';
+  for (const [id, callback] of [...h.timers]) { h.timers.delete(id); callback(); }
+  assert.equal(tooltip.getAttribute('zentral-effective-theme'), 'light');
+  assert.equal(opened, 1);
+});
+
+test('a hidden app retaining focus does not isolate newly opened browser tabs', () => {
+  const h = harness();
+  h.window.Zentral = { Apps: { isPanelOpen: () => false } };
+  h.document.activeElement = { closest: () => ({ id: 'zen-app-panel-root' }) };
+  let moves = 0;
+  h.gBrowser.moveTabToEnd = () => moves++;
+  h.gBrowser.addTab = () => new Element('tab');
+  h.groups.hookAddTab();
+  const tab = h.gBrowser.addTab('about:blank');
+  assert.equal(moves, 0);
+  assert.equal(tab._zentralForceUngroup, undefined);
+});
+
+test('a panel closing animation does not isolate newly opened browser tabs', () => {
+  const h = harness();
+  h.window.Zentral = { Apps: { isPanelOpen: () => false } };
+  const panel = new Element(); panel.setAttribute('open', 'true'); panel.setAttribute('closing', 'true');
+  h.elements.set('zen-app-panel-root', panel);
+  let moves = 0;
+  h.gBrowser.moveTabToEnd = () => moves++;
+  h.gBrowser.addTab = () => new Element('tab');
+  h.groups.hookAddTab();
+  h.gBrowser.addTab('about:blank');
+  assert.equal(moves, 0);
+});
+
+for (const entry of ['hook', 'TabOpen']) {
+  test(`${entry} isolation never undoes a newly assigned native tab group`, () => {
+    const h = harness();
+    h.window.Zentral = { Apps: { isPanelOpen: () => true } };
+    const original = new Element('tab-group'); original.id = 'original';
+    const explicit = new Element('tab-group'); explicit.id = 'explicit';
+    const outside = new Element('tabs');
+    const tab = new Element('tab'); original.appendChild(tab);
+    let moves = 0;
+    h.gBrowser.moveTabToEnd = node => { moves++; outside.appendChild(node); };
+    if (entry === 'hook') {
+      h.gBrowser.addTab = () => tab;
+      h.groups.hookAddTab(); h.gBrowser.addTab('about:blank');
+    } else {
+      h.groups.setupTabOpenHandler(); h.tabContainer.fire('TabOpen', { target: tab });
+    }
+    assert.equal(moves, 1);
+    explicit.appendChild(tab); tab.setAttribute('data-zentral-group-id', 'explicit');
+    for (const [id, callback] of [...h.timers]) { h.timers.delete(id); callback(); }
+    assert.equal(tab.parentElement, explicit);
+    assert.equal(tab.getAttribute('data-zentral-group-id'), 'explicit');
+    assert.equal(moves, 1);
+  });
+}
