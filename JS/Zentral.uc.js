@@ -2,7 +2,7 @@
 // @name           Zentral
 // @description    Unified Apps Grid and Tabs Groups
 // @author         Michele Pierini
-// @version        v2.4.2
+// @version        v2.4.3
 // @include        main
 // ==/UserScript==
 
@@ -64,7 +64,7 @@
    * Zentral Constants shared across modules (Preferences keys, default bounds, etc.)
    */
   const Constants = {
-    VERSION: "2.4.2",
+    VERSION: "2.4.3",
     /**
      * 1.1 Apps Module Preference Keys & Dimension Constraints
      */
@@ -5846,7 +5846,19 @@
 
       if (this.isPlacementVerticalBar()) {
         const isVbRight = this.isVerticalBarOnRight();
-        const vbOffset = 44 + sideGap;
+        const vb = this.#dom.verticalBar;
+        const vbRect = vb?.getBoundingClientRect();
+        const autohide = Core.getPref(Constants.Apps.PREF_AUTOHIDE, false) === true;
+        const vbWidth = vb?.offsetWidth || vbRect?.width || (autohide ? 48 : 44);
+        let outerInset = 8;
+        if (autohide && vb) {
+          // The autohide transform moves the rect during reveal; use its layout inset.
+          const inset = parseFloat(getComputedStyle(vb)[isVbRight ? "right" : "left"]);
+          if (Number.isFinite(inset)) outerInset = Math.max(0, inset);
+        } else if (vbRect?.width > 0) {
+          outerInset = Math.max(0, isVbRight ? window.innerWidth - vbRect.right : vbRect.left);
+        }
+        const vbOffset = vbWidth + outerInset + 8;
 
         if (isVbRight) {
           targetRight = vbOffset;

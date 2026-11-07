@@ -27,6 +27,15 @@ All 112 Node tests, syntax checks and the isolated Zen smoke test passed. The
 collapse check now uses the current natural compact height, since moving the
 add button between the grid and footer can legitimately change that height.
 
+Version 2.4.3 corrects the app panel itself: it is fixed-positioned, so the
+2.4.2 bar margins did not move it. Its previous hard-coded 44px offset left
+zero spacing beside the 48px autohide bar (4px beside the fixed bar). Panel
+placement now uses the actual bar width and outer inset plus an 8px inner
+gap. Autohide uses the CSS inset rather than the animated bounding rect.
+A disposable Zen 1.24.1b profile reproduced the old 0px/4px gaps and measured
+8px after the correction in all four combinations of mode and side. All
+112 Node tests, syntax checks and the isolated Zen smoke test passed.
+
 ## Scope and checks
 
 Run `npm test` for the regression suite and `npm run check` for script syntax.

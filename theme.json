@@ -19,7 +19,7 @@
     }
   },
   "author": "Michele501st",
-  "version": "2.4.2",
+  "version": "2.4.3",
   "preferences": "preferences.json",
   "tags": ["apps", "tabs", "sidebar", "groups"],
   "fork": ["zen"],
