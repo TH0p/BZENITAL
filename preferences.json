@@ -41,6 +41,12 @@
     "defaultValue": false
   },
   {
+    "property": "zen.workspace.apps.sidebar.show_navbar",
+    "label": "Show Navigation Controls Toolbar in App Panels",
+    "type": "checkbox",
+    "defaultValue": false
+  },
+  {
     "property": "zen.workspace.apps.insta_peek.shortcut",
     "label": "Insta-Peek Shortcut",
     "type": "string",
@@ -104,7 +110,7 @@
     "property": "zen.workspace.zentral.report_endpoint",
     "label": "Serverless Issue Report Endpoint URL",
     "type": "string",
-    "defaultValue": "https://zentral-issue-reporter.michele-pierini.workers.dev/"
+    "defaultValue": ""
   },
   {
     "property": "zen.workspace.tabgroups.enabled",

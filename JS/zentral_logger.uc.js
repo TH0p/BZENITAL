@@ -2,7 +2,7 @@
 // @name         Zentral-Logger
 // @description  Comprehensive diagnostic logger for Zentral (Apps Grid, Tab Groups, Settings & Layout Renderings).
 // @author       Michele Pierini
-// @version      v1.0.2
+// @version      v2.4.1
 // @include      main
 // ==/UserScript==
 
@@ -24,11 +24,37 @@
     try { window._zentralLoggerCleanup(); } catch (_) {}
   }
 
+  // Resolve Services before registering listeners; the old late declaration left
+  // the Gecko console registration in its temporal dead zone and silently skipped it.
+  const Services = globalThis.Services || ChromeUtils.importESModule("resource://gre/modules/Services.sys.mjs").Services;
   let cleanupObservers = [];
+  let isActive = true;
   const MAX_ENTRIES = 8000;
-  const ringBuffer = window._zentralLoggerRingBuffer || [];
+  const MAX_ENTRY_CHARS = 8192;
+  const MAX_BUFFER_CHARS = 2000000;
+  const ringBuffer = Array.isArray(window._zentralLoggerRingBuffer) ? window._zentralLoggerRingBuffer : [];
+  // Apply the same bounds to entries retained across a hot reload.
+  for (let i = 0; i < ringBuffer.length; i++) ringBuffer[i] = String(ringBuffer[i]).slice(0, MAX_ENTRY_CHARS);
+  let bufferedChars = ringBuffer.reduce((sum, line) => sum + line.length, 0);
+  while (ringBuffer.length > MAX_ENTRIES || bufferedChars > MAX_BUFFER_CHARS) bufferedChars -= ringBuffer.shift().length;
   window._zentralLoggerRingBuffer = ringBuffer;
   let lastRecordedEvent = null;
+
+  function clearBuffer() {
+    ringBuffer.length = 0;
+    bufferedChars = 0;
+    lastRecordedEvent = null;
+  }
+
+  function storeLine(line, replaceLast = false) {
+    line = line.slice(0, MAX_ENTRY_CHARS);
+    if (replaceLast && ringBuffer.length) bufferedChars -= ringBuffer.pop().length;
+    while (ringBuffer.length && (ringBuffer.length >= MAX_ENTRIES || bufferedChars + line.length > MAX_BUFFER_CHARS)) {
+      bufferedChars -= ringBuffer.shift().length;
+    }
+    ringBuffer.push(line);
+    bufferedChars += line.length;
+  }
 
   function tsFull() {
     const d = new Date();
@@ -43,9 +69,13 @@
   }
 
   function isLoggerEnabled() {
+    if (!isActive) return false;
     try {
-      return Services.prefs.getBoolPref("zen.workspace.zentral.debug", false);
+      const enabled = Services.prefs.getBoolPref("zen.workspace.zentral.debug", false);
+      if (!enabled) clearBuffer();
+      return enabled;
     } catch (_) {
+      clearBuffer();
       return false;
     }
   }
@@ -63,7 +93,7 @@
       const prefKey = `zen.workspace.zentral.debug.${moduleName}`;
       return Services.prefs.getBoolPref(prefKey, false);
     } catch (_) {
-      return true; // Safe fallback
+      return false;
     }
   }
 
@@ -103,6 +133,7 @@
   }
 
   function formatLogArg(a) {
+    try {
     if (a === null) return "null";
     if (a === undefined) return "undefined";
     if (a instanceof Error || (typeof a === "object" && ("message" in a || "stack" in a))) {
@@ -127,6 +158,9 @@
       }
     }
     return String(a);
+    } catch (_) {
+      return "[Unformattable value]";
+    }
   }
 
   let isLoggingDirectly = false;
@@ -136,9 +170,11 @@
     const mod = explicitModule || classifyModuleFromTag(tag);
     if (!isModuleEnabled(mod)) return;
 
-    let msg = String(rawMessage || "").trim();
+    tag = formatLogArg(tag).slice(0, 120);
+    let msg = formatLogArg(rawMessage ?? "").slice(0, MAX_ENTRY_CHARS - 200).trim();
     // Strip redundant leading [tag] or [mod] or [Zentral] from message
-    const cleanPattern = new RegExp(`^\\[(${tag}|${mod}|Zentral-${tag}|Zentral|ZentralCore|ZentralApps|ZentralTabGroups|ZentralSettings)\\]\\s*`, 'i');
+    const escapePattern = value => String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const cleanPattern = new RegExp(`^\\[(${escapePattern(tag)}|${escapePattern(mod)}|Zentral-${escapePattern(tag)}|Zentral|ZentralCore|ZentralApps|ZentralTabGroups|ZentralSettings)\\]\\s*`, 'i');
     while (cleanPattern.test(msg)) {
       msg = msg.replace(cleanPattern, '').trim();
     }
@@ -151,13 +187,12 @@
     // Consecutive duplicate compression (e.g. rapid DOM mutations or repeated button clicks)
     if (lastRecordedEvent && lastRecordedEvent.tag === tag && lastRecordedEvent.level === level && lastRecordedEvent.msg === msg) {
       lastRecordedEvent.count++;
-      ringBuffer[ringBuffer.length - 1] = `${header} ${msg} (repeated ${lastRecordedEvent.count}x)`;
+      storeLine(`${header} ${msg} (repeated ${lastRecordedEvent.count}x)`, true);
       return;
     }
 
     lastRecordedEvent = { tag, level, msg, count: 1, time: timeStr };
-    if (ringBuffer.length >= MAX_ENTRIES) ringBuffer.shift();
-    ringBuffer.push(formattedLine);
+    storeLine(formattedLine);
   }
 
   /**
@@ -215,9 +250,9 @@
     },
     layout(component, details) {
       if (!isLoggerEnabled()) return;
-      const mod = classifyModuleFromTag(component) || "layout";
+      const mod = "layout";
       if (!isModuleEnabled(mod)) return;
-      const msg = typeof details === "object" ? JSON.stringify(details) : String(details);
+      const msg = formatLogArg(details);
       isLoggingDirectly = true;
       try { _native.log(`[Layout:${component}] ${msg}`); } finally { isLoggingDirectly = false; }
       record("layout", `Layout:${component}`, msg, mod);
@@ -234,7 +269,7 @@
     dump()   { if (isLoggerEnabled()) ringBuffer.forEach(l => _native.log(l)); },
     export() { exportLog(); },
     generateLogString() { return generateLogString(); },
-    clear()  { ringBuffer.length = 0; lastRecordedEvent = null; }
+    clear()  { clearBuffer(); }
   };
 
   window.ZentralLogger = ZentralLogger;
@@ -258,18 +293,16 @@
     };
   }
 
-  console.log   = patchConsoleMethod(_native.log,   "log");
-  console.warn  = patchConsoleMethod(_native.warn,  "warn");
-  console.error = patchConsoleMethod(_native.error, "error");
-  console.debug = patchConsoleMethod(_native.debug, "debug");
-  console.info  = patchConsoleMethod(_native.info,  "info");
+  const consoleWrappers = {};
+  for (const level of ["log", "warn", "error", "debug", "info"]) {
+    consoleWrappers[level] = patchConsoleMethod(_native[level], level);
+    console[level] = consoleWrappers[level];
+  }
 
   cleanupObservers.push(() => {
-    console.log   = _native.log;
-    console.warn  = _native.warn;
-    console.error = _native.error;
-    console.debug = _native.debug;
-    console.info  = _native.info;
+    for (const level of Object.keys(consoleWrappers)) {
+      if (console[level] === consoleWrappers[level]) console[level] = _native[level];
+    }
   });
 
   // Capture uncaught window errors & rejections
@@ -648,11 +681,14 @@
     cleanupObservers.push(() => window.removeEventListener("contextmenu", onContextMenu, true));
 
     // 2. Lifecycle listeners for all Context Menus and Submenus
-    const observedPopups = new WeakSet();
+    const popupObservers = new Map();
+    cleanupObservers.push(() => {
+      for (const observer of popupObservers.values()) observer.disconnect();
+      popupObservers.clear();
+    });
 
     function attachPopupObserver(popup) {
-      if (!popup || observedPopups.has(popup)) return;
-      observedPopups.add(popup);
+      if (!popup || popupObservers.has(popup)) return;
 
       const observer = new MutationObserver((mutations) => {
         if (!isLoggerEnabled()) return;
@@ -667,8 +703,15 @@
         }
       });
       observer.observe(popup, { childList: true, subtree: true, attributes: true, attributeFilter: ["label", "hidden", "disabled", "class"] });
-      cleanupObservers.push(() => observer.disconnect());
+      popupObservers.set(popup, observer);
     }
+
+    const onPopupHidden = (e) => {
+      popupObservers.get(e.target)?.disconnect();
+      popupObservers.delete(e.target);
+    };
+    window.addEventListener("popuphidden", onPopupHidden, true);
+    cleanupObservers.push(() => window.removeEventListener("popuphidden", onPopupHidden, true));
 
     const onPopupShowing = (e) => {
       if (!isLoggerEnabled()) return;
@@ -837,40 +880,49 @@
       const origSplitTabs = splitter.splitTabs;
       if (typeof origSplitTabs === "function") {
         splitter.splitTabs = function(tabs, gridType, initialIndex, options) {
-          if (isLoggerEnabled()) {
+          try { if (isLoggerEnabled()) {
             const stack = getCallerStack();
             const tabList = (tabs || []).map(t => getElementSummary(t)).join("; ");
             ZentralLogger.log("SplitView:splitTabs", `gridType="${gridType}" | initialIndex=${initialIndex} | tabs=[${tabList}] | stack: ${stack}`);
-          }
+          } } catch (_) {} // Diagnostics must never block the native operation.
           return origSplitTabs.apply(this, arguments);
         };
-        cleanupObservers.push(() => { splitter.splitTabs = origSplitTabs; });
+        const wrappedSplitTabs = splitter.splitTabs;
+        cleanupObservers.push(() => {
+          if (splitter.splitTabs === wrappedSplitTabs) splitter.splitTabs = origSplitTabs;
+        });
       }
 
       const origActivateSplitView = splitter.activateSplitView;
       if (typeof origActivateSplitView === "function") {
         splitter.activateSplitView = function(splitData) {
-          if (isLoggerEnabled()) {
+          try { if (isLoggerEnabled()) {
             const stack = getCallerStack();
             const groupId = splitData?.groupId || "";
             const tabList = (splitData?.tabs || []).map(t => getElementSummary(t)).join("; ");
             ZentralLogger.log("SplitView:activateSplitView", `groupId="${groupId}" | tabs=[${tabList}] | stack: ${stack}`);
-          }
+          } } catch (_) {}
           return origActivateSplitView.apply(this, arguments);
         };
-        cleanupObservers.push(() => { splitter.activateSplitView = origActivateSplitView; });
+        const wrappedActivateSplitView = splitter.activateSplitView;
+        cleanupObservers.push(() => {
+          if (splitter.activateSplitView === wrappedActivateSplitView) splitter.activateSplitView = origActivateSplitView;
+        });
       }
 
       const origDeactivateCurrentSplitView = splitter.deactivateCurrentSplitView;
       if (typeof origDeactivateCurrentSplitView === "function") {
         splitter.deactivateCurrentSplitView = function() {
-          if (isLoggerEnabled()) {
+          try { if (isLoggerEnabled()) {
             const stack = getCallerStack();
             ZentralLogger.log("SplitView:deactivateCurrentSplitView", `Stack: ${stack}`);
-          }
+          } } catch (_) {}
           return origDeactivateCurrentSplitView.apply(this, arguments);
         };
-        cleanupObservers.push(() => { splitter.deactivateCurrentSplitView = origDeactivateCurrentSplitView; });
+        const wrappedDeactivateSplitView = splitter.deactivateCurrentSplitView;
+        cleanupObservers.push(() => {
+          if (splitter.deactivateCurrentSplitView === wrappedDeactivateSplitView) splitter.deactivateCurrentSplitView = origDeactivateCurrentSplitView;
+        });
       }
     }
 
@@ -879,15 +931,18 @@
     if (dragProto && typeof dragProto.startTabDrag === "function") {
       const origStartTabDrag = dragProto.startTabDrag;
       dragProto.startTabDrag = function(event, tab, ...args) {
-        if (isLoggerEnabled()) {
+        try { if (isLoggerEnabled()) {
           const stack = getCallerStack();
           const activeTab = window.gBrowser?.selectedTab;
-          const optionsStr = args.map(a => (typeof a === "object" ? JSON.stringify(a) : String(a))).join(", ");
+          const optionsStr = args.map(formatLogArg).join(", ");
           ZentralLogger.log("Drag:startTabDrag", `Tab: ${getElementSummary(tab)} | activeTab="${activeTab?.label || ''}" | options=(${optionsStr}) | stack: ${stack}`);
-        }
+        } } catch (_) {}
         return origStartTabDrag.apply(this, arguments);
       };
-      cleanupObservers.push(() => { dragProto.startTabDrag = origStartTabDrag; });
+      const wrappedStartTabDrag = dragProto.startTabDrag;
+      cleanupObservers.push(() => {
+        if (dragProto.startTabDrag === wrappedStartTabDrag) dragProto.startTabDrag = origStartTabDrag;
+      });
     }
   }
 
@@ -897,7 +952,7 @@
   const onClick = (e) => {
     if (!isLoggerEnabled()) return;
     const t = e.target;
-    if (!t) return;
+    if (!t?.closest) return;
     
     // Apps tile click
     const tile = t.closest(".zen-app-tile");
@@ -954,6 +1009,7 @@
    * @returns {string} Formatted log output
    */
   function generateLogString() {
+    if (!isLoggerEnabled()) return "";
     const isFull = Services.prefs.getBoolPref("zen.workspace.zentral.debug.full", true);
     const activeModulesSummary = [
       `Core: YES`,
@@ -1000,6 +1056,8 @@
       return;
     }
 
+    let fos = null;
+    let cos = null;
     try {
       const now = new Date();
       const pad = (n) => String(n).padStart(2, "0");
@@ -1033,6 +1091,7 @@
           targetFile.append(name);
         }
       } catch (dirErr) {
+        targetFile = null;
         _native.warn("[Zentral-Logger] Could not resolve export directory:", dirErr);
       }
 
@@ -1041,52 +1100,72 @@
         return;
       }
 
-      const fos = Cc["@mozilla.org/network/file-output-stream;1"].createInstance(Ci.nsIFileOutputStream);
-      fos.init(targetFile, 0x02 | 0x08 | 0x20, 0o644, 0);
+      const logText = generateLogString();
+      // Reserve a unique file before opening it; rapid exports must not overwrite
+      // a previous report with the same timestamp.
+      targetFile.createUnique(Ci.nsIFile.NORMAL_FILE_TYPE, 0o600);
+      fos = Cc["@mozilla.org/network/file-output-stream;1"].createInstance(Ci.nsIFileOutputStream);
+      fos.init(targetFile, 0x02 | 0x08 | 0x20, 0o600, 0);
 
-      const cos = Cc["@mozilla.org/intl/converter-output-stream;1"].createInstance(Ci.nsIConverterOutputStream);
+      cos = Cc["@mozilla.org/intl/converter-output-stream;1"].createInstance(Ci.nsIConverterOutputStream);
       cos.init(fos, "UTF-8");
 
-      const logText = generateLogString();
       cos.writeString(logText);
-      cos.writeString(`\nLog file path: ${targetFile.path}\n`);
-
+      // Closing the converter flushes and closes its underlying file stream.
       cos.close();
-      fos.close();
+      cos = null;
+      fos = null;
 
       _native.log(`[Zentral-Logger] Log exported successfully to: ${targetFile.path}`);
     } catch (err) {
       _native.error("[Zentral-Logger] Failed to export log:", err);
+    } finally {
+      try { cos?.close(); } catch (_) {}
+      try { fos?.close(); } catch (_) {}
     }
   }
 
   // Register cleanup handler on window for hot-reloading
   window._zentralLoggerCleanup = () => {
+    if (!isActive) return;
+    isActive = false;
     cleanupObservers.forEach(fn => { try { fn(); } catch (_) {} });
     cleanupObservers = [];
   };
 
-  // Respect Diagnostics Prefs
-  const Services = globalThis.Services || Components.classes["@mozilla.org/network/services;1"].getService(Components.interfaces.nsIServiceManager).getServiceByContractID("@mozilla.org/preferences-service;1").QueryInterface(Components.interfaces.nsIPrefBranch);
+  // Erase retained data as soon as diagnostic collection is disabled.
+  const preferenceObserver = { observe() { isLoggerEnabled(); } };
+  try {
+    Services.prefs.addObserver("zen.workspace.zentral.debug", preferenceObserver);
+    cleanupObservers.push(() => Services.prefs.removeObserver("zen.workspace.zentral.debug", preferenceObserver));
+  } catch (_) {}
 
   // Listen to UI Capture button
-  window.addEventListener("ZentralCaptureLog", () => {
-    exportLog();
-  });
+  const onCaptureLog = () => exportLog();
+  window.addEventListener("ZentralCaptureLog", onCaptureLog);
+  cleanupObservers.push(() => window.removeEventListener("ZentralCaptureLog", onCaptureLog));
 
-  // Run observers & tracers ONLY if enabled
-  if (document.readyState === "complete") {
+  const onUnload = () => {
+    window._zentralLoggerCleanup();
+    clearBuffer();
+  };
+  window.addEventListener("unload", onUnload, { once: true });
+  cleanupObservers.push(() => window.removeEventListener("unload", onUnload));
+
+  const setupDiagnostics = () => {
+    if (!isActive) return;
     setupLayoutObservers();
     setupTabContextMenuTracer();
     setupTabDragAndSplitViewTracer();
+  };
+  // Event callbacks check the live preference so toggling diagnostics works without reload.
+  if (document.readyState === "complete") {
+    setupDiagnostics();
   } else {
-    window.addEventListener("DOMContentLoaded", () => {
-      setupLayoutObservers();
-      setupTabContextMenuTracer();
-      setupTabDragAndSplitViewTracer();
-    }, { once: true });
+    window.addEventListener("DOMContentLoaded", setupDiagnostics, { once: true });
+    cleanupObservers.push(() => window.removeEventListener("DOMContentLoaded", setupDiagnostics));
   }
 
-  ZentralLogger.log("Zentral-Logger", "Zentral-Logger v1.0.2 initialized with clean format & deduplication. Press Alt+L to export logs.");
+  ZentralLogger.log("Zentral-Logger", "Zentral-Logger v2.4.1 initialized with clean format & deduplication. Press Alt+L to export logs.");
 
 })();

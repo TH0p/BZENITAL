@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="theme.json"><img src="https://img.shields.io/badge/Version-v1.0.2-4A72FF.svg?style=flat-square" alt="Version"></a>
+  <a href="theme.json"><img src="https://img.shields.io/badge/Version-v2.4.1-4A72FF.svg?style=flat-square" alt="Version"></a>
   <a href="https://zen-browser.app/"><img src="https://img.shields.io/badge/Zen_Browser-Compatible-9B51E0.svg?style=flat-square" alt="Zen Browser"></a>
   <a href="theme.json"><img src="https://img.shields.io/badge/Sine_Engine-Native_Mod-00C853.svg?style=flat-square" alt="Sine Engine"></a>
   <a href="https://ko-fi.com/michele501st"><img src="https://img.shields.io/badge/Support-Ko--fi-FF5E5B.svg?style=flat-square&logo=ko-fi&logoColor=white" alt="Support on Ko-fi"></a>
@@ -20,6 +20,11 @@
 ---
 
 ## 📖 Overview
+
+This BZENITAL fork includes the original Zentral 1.1.0 updates while retaining
+its compact centered App Bar, custom motion and safeguards. See the
+[upstream integration notes](docs/upstream-sync.md) for the source revision,
+preserved changes and validation.
 
 **Zentral** unifies your favorite communication tools, web applications, and tabs into a cohesive, fluidly animated sidebar experience.
 <p align="center">
@@ -84,6 +89,7 @@ Keep your essential web apps (Discord, WhatsApp, Reddit, Spotify, Notion, YouTub
   - App Bar matches Zen Browser's active theme gradient and film grain texture with rounded panel borders.
 - **🎛️ Full Panel Controls**:
   - **Pin / Unpin**: Keep panels persistently open side-by-side with main web content.
+  - **🪟 Detachable Floating Panels**: Drag the grabber in the control pill to detach panels into freely floating, movable windows within page space with auto-pinned state, dual-sided control pill, 8-directional edge/corner resizing, and drag-to-edge re-docking with ghost preview.
   - **Dynamic Drag Resizing**: Smooth draggable edge resize handle with per-app width memory.
   - **Expand to Full Width**: Maximize panels instantly.
   - **Refresh App**: Reloads the App when necessary.
@@ -147,7 +153,7 @@ Zentral includes a telemetry and diagnostics subsystem:
 1. In Zen Browser, navigate to **Settings** (<kbd>Ctrl</kbd> + <kbd>,</kbd>) → **Sine Mods**.
 2. Paste the repository URL:
    ```text
-   https://github.com/Michele501st/Zentral-Sine
+   https://github.com/TH0p/BZENITAL
    ```
 3. Click the **Install** button.
 4. Sine will automatically download, validate, and activate Zentral instantly!
@@ -174,13 +180,41 @@ Zentral includes a telemetry and diagnostics subsystem:
 
 1. Locate your Zen Browser profile directory (`about:support` → **Profile Folder** → *Open Folder*).
 2. Inside the profile, create or navigate to `chrome/sine-mods/`.
-3. Clone or extract this repository into a folder named `zentral`:
+3. Clone or extract this repository into a folder named `bzenital`:
    ```bash
-   git clone https://github.com/Michele501st/Zentral-Sine.git "<profile-directory>/chrome/sine-mods/zentral"
+   git clone https://github.com/TH0p/BZENITAL.git "<profile-directory>/chrome/sine-mods/bzenital"
    ```
 4. Open Zen Browser and enable **Zentral** in your Sine Mod manager.
 
 ---
+
+### Updating BZENITAL without reverting to Zentral
+
+BZENITAL has its own Sine ID, `bzenital`. Its update source (`homepage`) is
+`https://github.com/TH0p/BZENITAL`; the original project's source is kept only
+as upstream attribution. Sine uses the homepage saved in its installed mod registry,
+so old installations with the original homepage cannot receive this fix by updating
+that old entry.
+
+If an update previously changed BZENITAL into Zentral, disable the old Zentral
+entry and install BZENITAL once through Sine using the repository URL above.
+Keep the original disabled to avoid loading both mods together. Existing app and
+group preferences retain the same keys. Subsequent updates of the new BZENITAL
+entry come from this fork.
+
+## Development and validation
+
+Run `npm test` with Node.js 20 or newer. No dependency installation is required.
+The tests cover preference changes, hot unloading, app lifecycle, tab-group recovery,
+diagnostic exports, and issue reporting. See [validation notes](docs/validation.md)
+for browser checks and remaining limits.
+
+Issue reports open a draft in this fork by default. An optional private deployment
+of `serverless/worker.js` can create issues directly after configuring
+`GITHUB_TOKEN` and the report endpoint preference. Its default repository is
+`TH0p/BZENITAL`; `GITHUB_REPOSITORY` can override it. No worker is deployed by this
+repository. Diagnostic attachment is opt-in; review logs for tab titles, URLs,
+and other personal content before sharing them.
 
 ## ⌨️ Shortcuts & Hotkeys
 
@@ -203,6 +237,7 @@ Zentral-Sine/
 ├── chrome.css            # Stylesheet overrides (glassmorphism, layout, animations)
 ├── JS/
 │   ├── Zentral.uc.js     # Master userChromeJS script (Apps, TabGroups, ColorPicker)
+│   ├── zentral_panel_geometry.uc.js # Panel geometry and docking helpers
 │   └── zentral_logger.uc.js # High-performance diagnostic logging engine
 ├── assets/
 │   ├── Zentral Logo.png  # High-resolution raster logo

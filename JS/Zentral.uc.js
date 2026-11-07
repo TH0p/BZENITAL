@@ -2,7 +2,7 @@
 // @name           Zentral
 // @description    Unified Apps Grid and Tabs Groups
 // @author         Michele Pierini
-// @version        v1.0.2
+// @version        v2.4.1
 // @include        main
 // ==/UserScript==
 
@@ -64,6 +64,7 @@
    * Zentral Constants shared across modules (Preferences keys, default bounds, etc.)
    */
   const Constants = {
+    VERSION: "2.4.1",
     /**
      * 1.1 Apps Module Preference Keys & Dimension Constraints
      */
@@ -81,6 +82,7 @@
       PREF_PLACEMENT: "zen.workspace.apps.sidebar.placement",
       PREF_UTILITY_ORDER: "zen.workspace.apps.sidebar.utility_order",
       PREF_HIDE_UTILITY_SECTION: "zen.workspace.apps.sidebar.hide_utility_section",
+      PREF_SHOW_NAVBAR: "zen.workspace.apps.sidebar.show_navbar",
       MIN_WIDTH_PX: 280,
       MAX_WIDTH_RATIO: 0.80,
       DEFAULT_SLIDE_MS: 450,
@@ -205,7 +207,13 @@
     PIN: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M8 11V15M3.5 11.5h9c0 0 0-2-1.5-3l-.5-4c0 0 .5-.5.5-1H5.5c0 .5.5 1 .5 1L5.5 8.5c-1.5 1-2 3-2 3z"/></svg>`,
     REFRESH: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M13.8 6.5A5.5 5.5 0 1 0 8 13.5a5.5 5.5 0 0 0 5.2-3.7M14 2v4.5H9.5"/></svg>`,
     GRABBER: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 14"><circle cx="3" cy="2.5" r="1.2"/><circle cx="7" cy="2.5" r="1.2"/><circle cx="3" cy="7" r="1.2"/><circle cx="7" cy="7" r="1.2"/><circle cx="3" cy="11.5" r="1.2"/><circle cx="7" cy="11.5" r="1.2"/></svg>`,
-    ADD: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`
+    ADD: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`,
+    MOBILE: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>`,
+    DESKTOP: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>`,
+    NAV_BACK: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3L5 8l5 5"/></svg>`,
+    NAV_FORWARD: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3l5 5-5 5"/></svg>`,
+    NAV_STOP: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/></svg>`,
+    NAV_UPDATE: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.5 3.5 6.5-7"/></svg>`
   });
 
   /**
@@ -241,7 +249,7 @@
         [Constants.Apps.PREF_APPS]: "[]",
         [Constants.Apps.PREF_WIDTH]: 350,
         [Constants.Apps.PREF_ANIMATION_SPEED]: Constants.Apps.DEFAULT_SLIDE_MS,
-        [Constants.Apps.PREF_ANIMATION_TYPE]: "slide",
+        [Constants.Apps.PREF_ANIMATION_TYPE]: "spring-gentle",
         [Constants.Apps.PREF_ENABLED]: true,
         [Constants.Apps.PREF_MAX_APPS]: Constants.Apps.DEFAULT_MAX_APPS,
         [Constants.Apps.PREF_APPS_PER_ROW]: Constants.Apps.DEFAULT_APPS_PER_ROW,
@@ -251,6 +259,7 @@
         [Constants.Apps.PREF_PLACEMENT]: "sidebar",
         [Constants.Apps.PREF_UTILITY_ORDER]: '["autohide",null,null,"settings"]',
         [Constants.Apps.PREF_HIDE_UTILITY_SECTION]: false,
+        [Constants.Apps.PREF_SHOW_NAVBAR]: false,
         [Constants.TabGroups.PREF_COLORS]: "{}",
         [Constants.TabGroups.PREF_STATE]: "{}",
         [Constants.TabGroups.PREF_ENABLED]: true,
@@ -267,8 +276,42 @@
         [Constants.Diagnostics.PREF_LOGGER_APPS]: false,
         [Constants.Diagnostics.PREF_LOGGER_MENUS]: false,
         [Constants.Diagnostics.PREF_LOGGER_LAYOUT]: false,
-        [Constants.Diagnostics.PREF_REPORT_ENDPOINT]: "https://zentral-issue-reporter.michele-pierini.workers.dev/"
+        [Constants.Diagnostics.PREF_REPORT_ENDPOINT]: ""
       };
+      this._themeCleanups = [];
+    }
+
+    init() {
+      if (this._prefObserver) return;
+      this._prefObserver = (_subject, topic, key) => {
+        if (topic !== "nsPref:changed") return;
+        const value = this.getPref(key);
+        this.emit(`config:${key}`, value);
+        this.emit("configChanged", { key, value });
+      };
+      Services.prefs.addObserver("zen.workspace.", this._prefObserver);
+      Services.prefs.addObserver(Constants.Diagnostics.PREF_LOGGER_PATH, this._prefObserver);
+      this.initThemeTracking();
+    }
+
+    destroy() {
+      if (this._prefObserver) {
+        for (const branch of ["zen.workspace.", Constants.Diagnostics.PREF_LOGGER_PATH]) {
+          try { Services.prefs.removeObserver(branch, this._prefObserver); } catch (_) {}
+        }
+        this._prefObserver = null;
+      }
+      const wasTrackingTheme = !!this._themeObserver;
+      this._themeObserver = null;
+      for (const cleanup of this._themeCleanups.splice(0)) {
+        try { cleanup(); } catch (_) {}
+      }
+      if (wasTrackingTheme) {
+        for (const element of [document.documentElement, document.getElementById("zentral-tabgroup-tooltip"), document.getElementById("zen-app-panel-slider")]) {
+          try { element?.removeAttribute("zentral-effective-theme"); } catch (_) {}
+        }
+      }
+      this.listeners.clear();
     }
 
     /**
@@ -306,11 +349,17 @@
     getPref(key, fallback) {
       const defaultVal = this.defaultPrefs[key] !== undefined ? this.defaultPrefs[key] : fallback;
       try {
-        if (!Services.prefs.prefHasUserValue(key)) return defaultVal;
         const prefType = Services.prefs.getPrefType(key);
         if (prefType === Services.prefs.PREF_BOOL) return Services.prefs.getBoolPref(key);
         if (prefType === Services.prefs.PREF_INT) return Services.prefs.getIntPref(key);
-        if (prefType === Services.prefs.PREF_STRING) return Services.prefs.getStringPref(key);
+        if (prefType === Services.prefs.PREF_STRING) {
+          const value = Services.prefs.getStringPref(key);
+          if (typeof defaultVal === "number") {
+            const number = value.trim() === "" ? NaN : Number(value);
+            return Number.isFinite(number) ? number : defaultVal;
+          }
+          return value;
+        }
       } catch (e) {
         console.warn("[ZentralCore] Config failed to read pref", key, e);
       }
@@ -325,12 +374,17 @@
     setPref(key, value) {
       try {
         if (typeof value === "number") {
-          if (Number.isInteger(value)) Services.prefs.setIntPref(key, value);
+          if (!Number.isFinite(value)) return;
+          if (Services.prefs.getPrefType(key) === Services.prefs.PREF_STRING) Services.prefs.setStringPref(key, String(value));
+          else if (Number.isInteger(value)) Services.prefs.setIntPref(key, value);
           else Services.prefs.setStringPref(key, value.toString());
         }
         else if (typeof value === "string") Services.prefs.setStringPref(key, value);
         else if (typeof value === "boolean") Services.prefs.setBoolPref(key, value);
-        this.emit(`config:${key}`, value);
+        if (!this._prefObserver) {
+          this.emit(`config:${key}`, value);
+          this.emit("configChanged", { key, value });
+        }
       } catch (e) {
         console.warn("[ZentralCore] Config failed to save pref", key, e);
       }
@@ -386,11 +440,348 @@
         console.error(`[${module}]`, ...args);
       }
     }
+
+    /**
+     * Initializes theme listeners for OS and browser theme switches.
+     */
+    initThemeTracking() {
+      if (this._themeObserver) return;
+      const observer = {
+        observe: () => {
+          if (this._themeObserver === observer) this.updateEffectiveTheme();
+        }
+      };
+      const onThemeChange = observer.observe;
+      this._themeObserver = observer;
+      const register = (subscribe, unsubscribe) => {
+        try {
+          subscribe();
+          this._themeCleanups.push(unsubscribe);
+        } catch (_) {}
+      };
+
+      // Own every listener so Sine reloads can release modern and legacy APIs.
+      try {
+        if (window.matchMedia) {
+          const mq = window.matchMedia("(prefers-color-scheme: dark)");
+          if (mq.addEventListener) {
+            register(() => mq.addEventListener("change", onThemeChange), () => mq.removeEventListener("change", onThemeChange));
+          } else if (mq.addListener) {
+            register(() => mq.addListener(onThemeChange), () => mq.removeListener(onThemeChange));
+          }
+        }
+      } catch (_) {}
+      for (const topic of ["look-and-feel-changed", "zen-theme-change"]) {
+        register(() => Services.obs.addObserver(observer, topic), () => Services.obs.removeObserver(observer, topic));
+      }
+      for (const key of ["layout.css.prefers-color-scheme.content-override", "zen.view.window.scheme"]) {
+        register(() => Services.prefs.addObserver(key, observer), () => Services.prefs.removeObserver(key, observer));
+      }
+      if (document.readyState === "loading") {
+        register(() => window.addEventListener("DOMContentLoaded", onThemeChange, { once: true }), () => window.removeEventListener("DOMContentLoaded", onThemeChange));
+      }
+      this.updateEffectiveTheme();
+    }
+
+    /**
+     * Determines whether the effective browser / system theme is currently dark mode.
+     * Evaluates Website appearance (content-override), Zen window scheme, and OS media queries.
+     * @returns {boolean} True if dark mode is active, false if light mode.
+     */
+    isEffectiveDarkMode() {
+      // 1. Explicit Website appearance override: 0 = Dark, 1 = Light, 2 = System
+      try {
+        const contentOverride = Services.prefs.getIntPref("layout.css.prefers-color-scheme.content-override", 2);
+        if (contentOverride === 0) return true;
+        if (contentOverride === 1) return false;
+      } catch (_) {}
+
+      // 2. Zen window scheme: 0 = Dark, 1 = Light, 2 = System
+      try {
+        const windowScheme = Services.prefs.getIntPref("zen.view.window.scheme", 2);
+        if (windowScheme === 0) return true;
+        if (windowScheme === 1) return false;
+      } catch (_) {}
+
+      // 3. Zen Theme Picker instance if available
+      try {
+        if (window.gZenThemePicker && typeof window.gZenThemePicker.isDarkMode === "boolean") {
+          return window.gZenThemePicker.isDarkMode;
+        }
+      } catch (_) {}
+
+      // 4. Gecko content theme derived color scheme
+      try {
+        if (typeof Services?.appinfo?.contentThemeDerivedColorSchemeIsDark === "boolean") {
+          return Services.appinfo.contentThemeDerivedColorSchemeIsDark;
+        }
+      } catch (_) {}
+
+      // 5. Native OS media query
+      try {
+        return window.matchMedia("(prefers-color-scheme: dark)").matches;
+      } catch (_) {
+        return false;
+      }
+    }
+
+    /**
+     * Synchronizes the effective theme state across DOM attributes.
+     * Updates documentElement and tooltip panel attributes so CSS rules can react immediately.
+     */
+    updateEffectiveTheme() {
+      const isDark = this.isEffectiveDarkMode();
+      const theme = isDark ? "dark" : "light";
+      try {
+        document.documentElement.setAttribute("zentral-effective-theme", theme);
+      } catch (_) {}
+      try {
+        const tooltip = document.getElementById("zentral-tabgroup-tooltip");
+        if (tooltip) {
+          tooltip.setAttribute("zentral-effective-theme", theme);
+        }
+      } catch (_) {}
+      try {
+        const slider = document.getElementById("zen-app-panel-slider");
+        if (slider) {
+          slider.setAttribute("zentral-effective-theme", theme);
+        }
+      } catch (_) {}
+      this.emit("effective-theme-changed", { isDark, theme });
+    }
+
   }
 
   // Instantiate Core immediately
   const Core = new ZentralCore();
   Core.log("ZentralCore", "Initialized.");
+  /* ============================================================================
+   * 2.8 PANEL GEOMETRY ENGINE (Built-in Fallback)
+   * ============================================================================
+   */
+  const ZentralGeometryBuiltin = {
+    clampRect(rect, bounds, min = {}, options = {}) {
+      const minW = min.minW ?? 320;
+      const minH = min.minH ?? 360;
+      const availableW = Math.max(minW, bounds.width);
+      const availableH = Math.max(minH, bounds.height);
+      const inputW = (rect && typeof rect.w === "number" && !isNaN(rect.w) && rect.w > 0) ? rect.w : minW;
+      const inputH = (rect && typeof rect.h === "number" && !isNaN(rect.h) && rect.h > 0) ? rect.h : minH;
+      let w = Math.max(minW, Math.min(inputW, availableW));
+      let h = Math.max(minH, Math.min(inputH, availableH));
+
+      const allowOverflow = options.allowOverflow ?? false;
+      const minVisible = options.minVisibleMargin ?? 80;
+
+      let minX, maxX;
+      if (allowOverflow) {
+        minX = bounds.left - w + minVisible;
+        maxX = bounds.left + bounds.width - minVisible;
+      } else {
+        minX = bounds.left;
+        maxX = bounds.left + bounds.width - w;
+      }
+      const inputX = (rect && typeof rect.x === "number" && !isNaN(rect.x)) ? rect.x : bounds.left;
+      let x = (bounds.width < w && !allowOverflow) ? bounds.left : Math.max(minX, Math.min(inputX, maxX));
+
+      let minY, maxY;
+      if (allowOverflow) {
+        minY = bounds.top;
+        maxY = bounds.top + bounds.height - minVisible;
+      } else {
+        minY = bounds.top;
+        maxY = bounds.top + bounds.height - h;
+      }
+      const inputY = (rect && typeof rect.y === "number" && !isNaN(rect.y)) ? rect.y : bounds.top;
+      let y = (bounds.height < h && !allowOverflow) ? bounds.top : Math.max(minY, Math.min(inputY, maxY));
+
+      return { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h) };
+    },
+
+    getDockSlots(params) {
+      const {
+        contentRect,
+        sidebarRect,
+        vbRect,
+        isSidebarRight = false,
+        isPlacementVerticalBar = false,
+        isSidebarCollapsed = false,
+        isVbRevealed = true,
+        gap = 12,
+        collapsedGap = 7,
+        panelWidth = 420,
+        topInset = 12,
+        windowWidth = (typeof window !== "undefined" ? window.innerWidth : 1920),
+        windowHeight = (typeof window !== "undefined" ? window.innerHeight : 1080)
+      } = params;
+
+      const sideGap = isSidebarCollapsed ? collapsedGap : gap;
+      const top = Math.max(gap, Math.round(topInset));
+      const height = Math.max(200, Math.round(windowHeight - top - gap));
+      const w = Math.max(320, Math.round(panelWidth));
+
+      let sidebarSlot = null;
+      let oppositeSlot = null;
+
+      if (isPlacementVerticalBar) {
+        const isVbRight = !isSidebarRight;
+        const vbWidth = (vbRect && vbRect.width > 0) ? vbRect.width : 44;
+        const vbOffset = (isVbRevealed ? vbWidth : 0) + sideGap;
+
+        if (isVbRight) {
+          const sbX = windowWidth - vbOffset - w;
+          sidebarSlot = { x: sbX, y: top, w, h: height, side: "right" };
+          let oppLeft = gap;
+          if (sidebarRect && sidebarRect.width > 0) {
+            oppLeft = Math.max(gap, Math.round(sidebarRect.right) + sideGap);
+          }
+          oppositeSlot = { x: oppLeft, y: top, w, h: height, side: "left" };
+        } else {
+          const sbX = vbOffset;
+          sidebarSlot = { x: sbX, y: top, w, h: height, side: "left" };
+          let oppRightOffset = gap;
+          if (sidebarRect && sidebarRect.width > 0) {
+            oppRightOffset = Math.max(gap, Math.round(windowWidth - sidebarRect.left) + sideGap);
+          }
+          const oppX = windowWidth - oppRightOffset - w;
+          oppositeSlot = { x: oppX, y: top, w, h: height, side: "right" };
+        }
+      } else {
+        if (isSidebarRight) {
+          let sbRightOffset = gap;
+          if (sidebarRect && sidebarRect.width > 0) {
+            sbRightOffset = Math.max(gap, Math.round(windowWidth - sidebarRect.left) + sideGap);
+          }
+          const sbX = windowWidth - sbRightOffset - w;
+          sidebarSlot = { x: sbX, y: top, w, h: height, side: "right" };
+          oppositeSlot = { x: gap, y: top, w, h: height, side: "left" };
+        } else {
+          let sbLeft = gap;
+          if (sidebarRect && sidebarRect.width > 0) {
+            sbLeft = Math.max(gap, Math.round(sidebarRect.right) + sideGap);
+          }
+          sidebarSlot = { x: sbLeft, y: top, w, h: height, side: "left" };
+          const oppX = windowWidth - gap - w;
+          oppositeSlot = { x: oppX, y: top, w, h: height, side: "right" };
+        }
+      }
+
+      return { sidebar: sidebarSlot, opposite: oppositeSlot };
+    },
+
+    hitTestSnapZone(pointerOrOptions, boundsOrSlots, threshold = 100, isSidebarAttachedRight = false) {
+      if (!boundsOrSlots) return null;
+      let pointerX = null;
+      let panelRect = null;
+
+      if (typeof pointerOrOptions === "number") {
+        pointerX = pointerOrOptions;
+      } else if (pointerOrOptions && typeof pointerOrOptions === "object") {
+        pointerX = typeof pointerOrOptions.pointerX === "number" ? pointerOrOptions.pointerX : null;
+        panelRect = pointerOrOptions.panelRect || null;
+      }
+
+      const pX = (panelRect && typeof panelRect.x === "number" && !isNaN(panelRect.x))
+        ? panelRect.x
+        : ((panelRect && typeof panelRect.left === "number" && !isNaN(panelRect.left)) ? panelRect.left : null);
+
+      const pW = (panelRect && typeof panelRect.w === "number" && !isNaN(panelRect.w))
+        ? panelRect.w
+        : ((panelRect && typeof panelRect.width === "number" && !isNaN(panelRect.width)) ? panelRect.width : 0);
+
+      const pRight = (pX !== null) ? (pX + pW) : null;
+
+      if (boundsOrSlots.sidebar && boundsOrSlots.opposite) {
+        const slots = boundsOrSlots;
+        const leftSlot = (slots.sidebar.side === "left") ? slots.sidebar : slots.opposite;
+        const rightSlot = (slots.sidebar.side === "right") ? slots.sidebar : slots.opposite;
+
+        const leftEdge = leftSlot.x;
+        const rightEdge = rightSlot.x + rightSlot.w;
+
+        const nearLeft = (
+          (pX !== null && pX <= (leftEdge + threshold)) ||
+          (pointerX !== null && pointerX <= (leftEdge + threshold + 40))
+        );
+
+        const nearRight = (
+          (pRight !== null && pRight >= (rightEdge - threshold)) ||
+          (pointerX !== null && pointerX >= (rightEdge - threshold - 40))
+        );
+
+        if (nearLeft && nearRight) {
+          if (pX === null) return (leftSlot === slots.sidebar) ? "sidebar" : "opposite";
+          const distLeft = Math.abs(pX - leftEdge);
+          const distRight = Math.abs(pRight - rightEdge);
+          return (distLeft <= distRight)
+            ? ((leftSlot === slots.sidebar) ? "sidebar" : "opposite")
+            : ((rightSlot === slots.sidebar) ? "sidebar" : "opposite");
+        }
+
+        if (nearLeft) return (leftSlot === slots.sidebar) ? "sidebar" : "opposite";
+        if (nearRight) return (rightSlot === slots.sidebar) ? "sidebar" : "opposite";
+        return null;
+      }
+
+      const bounds = boundsOrSlots;
+      if (typeof bounds.left === "number" && typeof bounds.right === "number") {
+        const nearLeft = (pointerX !== null && pointerX <= (bounds.left + threshold)) ||
+                         (pX !== null && pX <= (bounds.left + threshold));
+        const nearRight = (pointerX !== null && pointerX >= (bounds.right - threshold)) ||
+                          (pRight !== null && pRight >= (bounds.right - threshold));
+        if (nearLeft) return isSidebarAttachedRight ? "opposite" : "sidebar";
+        if (nearRight) return isSidebarAttachedRight ? "sidebar" : "opposite";
+      }
+
+      return null;
+    },
+
+    computeResize(arg1, arg2, dx, dy, min = {}, bounds = null) {
+      const dir = (typeof arg1 === "string") ? arg1 : (typeof arg2 === "string" ? arg2 : "se");
+      const startRect = (typeof arg1 === "object" && arg1 !== null) ? arg1 : (typeof arg2 === "object" && arg2 !== null ? arg2 : { x: 0, y: 0, w: 420, h: 600 });
+
+      const minW = min?.minW ?? 320;
+      const minH = min?.minH ?? 360;
+      let { x, y, w, h } = startRect;
+
+      if (dir.includes("e")) w = Math.max(minW, startRect.w + dx);
+      if (dir.includes("s")) h = Math.max(minH, startRect.h + dy);
+      if (dir.includes("w")) {
+        const rawW = startRect.w - dx;
+        if (rawW >= minW) { w = rawW; x = startRect.x + dx; }
+        else { w = minW; x = startRect.x + (startRect.w - minW); }
+      }
+      if (dir.includes("n")) {
+        const rawH = startRect.h - dy;
+        if (rawH >= minH) { h = rawH; y = startRect.y + dy; }
+        else { h = minH; y = startRect.y + (startRect.h - minH); }
+      }
+
+      if (bounds) {
+        return this.clampRect({ x, y, w, h }, bounds, { minW, minH }, { allowOverflow: true, minVisibleMargin: 80 });
+      }
+      return { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h) };
+    },
+
+    pickPillSide(panelRect, bounds, pillWidth = 44, preferredSide = "right") {
+      const spaceRight = (bounds.left + bounds.width) - (panelRect.x + panelRect.w);
+      const spaceLeft = panelRect.x - bounds.left;
+
+      if (spaceLeft < pillWidth && spaceRight >= pillWidth) return "right";
+      if (spaceRight < pillWidth && spaceLeft >= pillWidth) return "left";
+
+      if (preferredSide === "right") {
+        if (spaceRight >= pillWidth) return "right";
+        if (spaceLeft >= pillWidth) return "left";
+        return "right";
+      } else {
+        if (spaceLeft >= pillWidth) return "left";
+        if (spaceRight >= pillWidth) return "right";
+        return "left";
+      }
+    }
+  };
+
   /* ============================================================================
    * 3.0 APPS MODULE (ZentralApps)
    * ============================================================================
@@ -401,6 +792,61 @@
    * Manages sidebar app grid, floating app panels, workspace isolation, and drag/drop reordering.
    */
   class ZentralApps {
+    #initialized = false;
+    #preloadGeneration = 0;
+    #gridResizeObserver = null;
+    #persistentListeners = [];
+    #pendingTimers = new Map();
+    #browserCleanups = new Map();
+    #floatResizeCleanup = null;
+    #panelGeneration = 0;
+
+    #setTimeout(callback, delay) {
+      const timer = setTimeout(() => {
+        this.#pendingTimers.delete(timer);
+        callback();
+      }, delay);
+      this.#pendingTimers.set(timer, null);
+      return timer;
+    }
+
+    #waitForPanel(delay) {
+      return new Promise(resolve => {
+        const timer = this.#setTimeout(() => resolve(true), delay);
+        this.#pendingTimers.set(timer, () => resolve(false));
+      });
+    }
+
+    #cancelPointerGesture() {
+      window.removeEventListener("pointermove", this.onFloatDrag);
+      window.removeEventListener("pointerup", this.onFloatDrop);
+      window.removeEventListener("pointercancel", this.onFloatDrop);
+      this.#floatResizeCleanup?.();
+      this.#floatResizeCleanup = null;
+      this.#state.floatDrag = null;
+      this.#dom.dragShield?.removeAttribute("data-active");
+      this.#dom.dockGhost?.removeAttribute("data-active");
+    }
+
+    #disposeAppBrowser(appId) {
+      this.#browserCleanups.get(appId)?.();
+      this.#browserCleanups.delete(appId);
+      if (this._loadingTimeouts?.has(appId)) {
+        clearTimeout(this._loadingTimeouts.get(appId));
+        this._loadingTimeouts.delete(appId);
+      }
+      this._loadingAppIds?.delete(appId);
+      this.#state.appBrowsers.get(appId)?.remove();
+      this.#state.appBrowsers.delete(appId);
+    }
+    /**
+     * Authoritative panel geometry engine: uses loaded singleton or embedded fallback.
+     * @returns {Object}
+     */
+    get #geo() {
+      return window.ZentralPanelGeometry || globalThis.ZentralPanelGeometry || ZentralGeometryBuiltin;
+    }
+
     /** @private Side attribute MutationObserver */
     #sideObserver = null;
     /** @private Toolbox & theme mutation observer */
@@ -422,6 +868,31 @@
     destroy() {
       try {
         Core.log("ZentralApps", "Destroying Apps module...");
+        this.#initialized = false;
+        this.#preloadGeneration++;
+        this.#panelGeneration++;
+        this.#cancelPointerGesture();
+        for (const [timer, cancel] of this.#pendingTimers) {
+          clearTimeout(timer);
+          cancel?.();
+        }
+        this.#pendingTimers.clear();
+        for (const timer of this._loadingTimeouts?.values() || []) clearTimeout(timer);
+        this._loadingTimeouts?.clear();
+        this._loadingAppIds?.clear();
+        for (const appId of [...this.#browserCleanups.keys()]) this.#disposeAppBrowser(appId);
+        for (const key of ["preloadTimerId", "preloadWaitTimerId", "utilityCollapseTimer"]) {
+          if (this.#state[key]) clearTimeout(this.#state[key]);
+          this.#state[key] = null;
+        }
+        if (this.#state.preloadWaitResolve) {
+          this.#state.preloadWaitResolve();
+          this.#state.preloadWaitResolve = null;
+        }
+        if (this.#state.panelAnimationRafId) {
+          cancelAnimationFrame(this.#state.panelAnimationRafId);
+          this.#state.panelAnimationRafId = null;
+        }
         
         // 1. Clear timers and animation frames
         if (this.#state.repositionTimer) {
@@ -447,6 +918,14 @@
         this.stopPositionTracking();
 
         // 2. Disconnect observers
+        if (this.#gridResizeObserver) {
+          this.#gridResizeObserver.disconnect();
+          this.#gridResizeObserver = null;
+        }
+        for (const [target, type, listener, options] of this.#persistentListeners) {
+          target.removeEventListener(type, listener, options);
+        }
+        this.#persistentListeners = [];
         if (this.#sideObserver) {
           try { this.#sideObserver.disconnect(); } catch (_) {}
           this.#sideObserver = null;
@@ -505,6 +984,8 @@
           "zen-apps-sidebar-styles",
           "zentral-apps-utility-section",
           "zen-app-panel-root",
+          "zen-app-panel-dock-ghost",
+          "zen-app-panel-drag-shield",
           "zen-apps-autohide-trigger",
           "zen-apps-sidebar-tile-context",
           "zentral-apps-vertical-bar",
@@ -539,6 +1020,23 @@
         }
 
         // 6. Reset DOM references and state
+        this.#state.activeAppId = null;
+        this.#state.isPinned = false;
+        this.#state.isExpanded = false;
+        this.#state.isInstaPeeking = false;
+        this.#state.isFloating = false;
+        this.#state.prePinned = false;
+        this.#state.floatRects.clear();
+        this.#state.floatDrag = null;
+        this.#state.preExpandWidth = null;
+        this.#state.cachedScrollbarWidth = null;
+        this.#state.lastWorkspaceId = null;
+        for (const attr of ["zentral-app-panel-open", "zentral-vb-expanded", "zentral-unit-closing", "zentral-apps-autohide", "zentral-apps-placement", "zentral-apps-hide-utility"]) {
+          document.documentElement.removeAttribute(attr);
+        }
+        for (const property of ["--zentral-unit-shift", "--zentral-anim-ms", "--zentral-anim-ease", "--zentral-anim-ease-bar"]) {
+          document.documentElement.style.removeProperty(property);
+        }
         this.#dom = {
           grid: null,
           scrollBox: null,
@@ -560,9 +1058,28 @@
           clip: null,
           panel: null,
           pill: null,
+          pillMain: null,
+          closeBox: null,
+          closeBtn: null,
           pinBtn: null,
           expandBtn: null,
-          refreshBtn: null
+          grabberBtn: null,
+          refreshBtn: null,
+          mobileBtn: null,
+          dockGhost: null,
+          dragShield: null,
+          resizeHandles: [],
+          hoverZoneLeft: null,
+          hoverZoneRight: null,
+          navbar: null,
+          navBackBtn: null,
+          navForwardBtn: null,
+          navReloadBtn: null,
+          navZoomOutBtn: null,
+          navZoomLabel: null,
+          navZoomInBtn: null,
+          navUrlInput: null,
+          navUpdateBtn: null
         };
         this._stylesInjected = false;
         delete window.ZenApps;
@@ -585,13 +1102,21 @@
       panelWidthPx: 0,
       appBrowsers: new Map(),
       positionRafId: null,
+      panelAnimationRafId: null,
+      preloadTimerId: null,
+      preloadWaitTimerId: null,
+      preloadWaitResolve: null,
       closeTimerId: null,
       cachedScrollbarWidth: null,
       repositionTimer: null,
       utilityCollapseTimer: null,
       autohideCollapseTimer: null,
       autohideRevealTimer: null,
-      isInstaPeeking: false
+      isInstaPeeking: false,
+      isFloating: false,
+      prePinned: false,
+      floatRects: new Map(),
+      floatDrag: null
     };
 
     /**
@@ -619,9 +1144,28 @@
       clip: null,
       panel: null,
       pill: null,
+      pillMain: null,
+      closeBox: null,
+      closeBtn: null,
       pinBtn: null,
       expandBtn: null,
-      refreshBtn: null
+      grabberBtn: null,
+      refreshBtn: null,
+      mobileBtn: null,
+      dockGhost: null,
+      dragShield: null,
+      resizeHandles: [],
+      hoverZoneLeft: null,
+      hoverZoneRight: null,
+      navbar: null,
+      navBackBtn: null,
+      navForwardBtn: null,
+      navReloadBtn: null,
+      navZoomOutBtn: null,
+      navZoomLabel: null,
+      navZoomInBtn: null,
+      navUrlInput: null,
+      navUpdateBtn: null
     };
 
     /**
@@ -638,7 +1182,12 @@
       this.startResize = this.startResize.bind(this);
       this.onDrag = this.onDrag.bind(this);
       this.onStopDrag = this.onStopDrag.bind(this);
+      this.beginDetachGesture = this.beginDetachGesture.bind(this);
+      this.onFloatDrag = this.onFloatDrag.bind(this);
+      this.onFloatDrop = this.onFloatDrop.bind(this);
       this.repositionGrid = this.repositionGrid.bind(this);
+      this._loadingAppIds = new Set();
+      this._loadingTimeouts = new Map();
     }
 
     /**
@@ -707,10 +1256,12 @@
      * Initializes the Apps Module UI, preferences, event observers, and preloading timers.
      */
     init() {
+      if (this.#initialized) return;
       if (!Core.getPref(Constants.Apps.PREF_ENABLED)) {
         Core.log("ZentralApps", "Apps Grid feature is disabled.");
         return;
       }
+      this.#initialized = true;
       this.injectStyles();
       this.createContainers();
       this.applyHideUtilitySectionPref();
@@ -729,7 +1280,10 @@
       Core.emit("appsInitComplete", this);
 
       // Preload apps sequentially after browser startup
-      setTimeout(() => this.preloadAppsSequence(), 2000);
+      this.#state.preloadTimerId = setTimeout(() => {
+        this.#state.preloadTimerId = null;
+        this.preloadAppsSequence();
+      }, 2000);
     }
 
     /**
@@ -740,14 +1294,42 @@
         const str = Core.getPref(Constants.Apps.PREF_APPS);
         const parsed = JSON.parse(str);
         if (Array.isArray(parsed)) {
+          const previousApps = this.#state.apps;
+          const seenIds = new Set();
           this.#state.apps = parsed
-            .filter(a => a && typeof a.id === "string" && typeof a.url === "string")
+            .filter(a => {
+              if (!a || typeof a.id !== "string" || !a.id || typeof a.url !== "string" || !a.url || seenIds.has(a.id)) return false;
+              seenIds.add(a.id);
+              return true;
+            })
             .map(a => {
               if (!a.workspaceId || a.workspaceId === "current") {
                 a.workspaceId = "all";
               }
+              if (a.mobile === undefined) a.mobile = false;
+              if (a.flipSide === undefined) a.flipSide = false;
+              if (typeof a.zoom !== "number" || isNaN(a.zoom)) a.zoom = 1;
               return a;
             });
+          for (const [id, browser] of this.#state.appBrowsers) {
+            const previous = previousApps.find(app => app.id === id);
+            const current = this.#state.apps.find(app => app.id === id);
+            if (!current || previous?.url !== current.url) {
+              if (this.#state.activeAppId === id) this.closePanel();
+              this.#disposeAppBrowser(id);
+              this.#state.floatRects.delete(id);
+            } else {
+              const ua = this.getUserAgentForApp(current);
+              browser.setAttribute("customuseragent", ua);
+              browser.setAttribute("useragent", ua);
+              try { browser.customUserAgent = ua; } catch (_) {}
+              try { if (browser.browsingContext) browser.browsingContext.customUserAgent = ua; } catch (_) {}
+              try { browser.fullZoom = current.zoom; } catch (_) {}
+              try { if (browser.browsingContext) browser.browsingContext.fullZoom = current.zoom; } catch (_) {}
+              if (!!previous?.mobile !== !!current.mobile) this.refreshApp(id);
+            }
+          }
+          if (this.#state.appBrowsers.size === 0) this.stopBadgeSyncLoop();
         }
       } catch (e) {
         console.warn("[ZentralApps] Failed to load apps pref:", e);
@@ -759,7 +1341,13 @@
      */
     saveApps() {
       try {
-        const clean = this.#state.apps.map(({ id, url, title, icon, width, preload, workspaceId }) => ({ id, url, title, icon, width, preload: !!preload, workspaceId }));
+        const clean = this.#state.apps.map(({ id, url, title, icon, width, preload, workspaceId, mobile, zoom, flipSide }) => {
+          const entry = { id, url, title, icon, width, preload: !!preload, workspaceId };
+          if (mobile) entry.mobile = true;
+          if (flipSide) entry.flipSide = true;
+          if (typeof zoom === "number" && !isNaN(zoom) && zoom !== 1) entry.zoom = zoom;
+          return entry;
+        });
         Core.setPref(Constants.Apps.PREF_APPS, JSON.stringify(clean));
       } catch (e) {
         console.warn("[ZentralApps] Failed to save apps pref:", e);
@@ -777,7 +1365,9 @@
         const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
         if (Array.isArray(parsed) && parsed.length > 0) {
           const slots = new Array(slotCount).fill(null);
-          parsed.forEach((k, idx) => { if (idx < slotCount && k) slots[idx] = k; });
+          parsed.forEach((k, idx) => {
+            if (idx < slotCount && ["settings", "autohide"].includes(k) && !slots.includes(k)) slots[idx] = k;
+          });
           const required = ["settings", "autohide"];
           required.forEach(reqKey => {
             if (!slots.includes(reqKey)) {
@@ -814,8 +1404,11 @@
      * Uses staggered delays to prevent startup performance hits.
      */
     async preloadAppsSequence() {
+      const generation = this.#preloadGeneration;
       const preloadedApps = this.#state.apps.filter((a, i) => i === 0 || a.preload === true); // first app (WhatsApp) always runs in background
       for (const app of preloadedApps) {
+        if (generation !== this.#preloadGeneration || !this.#dom.panel) return;
+        if (!this.#state.apps.some(current => current.id === app.id && current.url === app.url)) continue;
         const { browser, isNew } = this.getOrCreateAppBrowser(app);
         if (isNew) {
           try {
@@ -828,8 +1421,16 @@
           } catch (e) { console.error("[ZentralApps] Preload failed:", e); }
         }
         // Stagger preloads by 1.5 seconds to minimize main thread blocking
-        await new Promise(r => setTimeout(r, 1500));
+        await new Promise(resolve => {
+          this.#state.preloadWaitResolve = resolve;
+          this.#state.preloadWaitTimerId = setTimeout(() => {
+            this.#state.preloadWaitTimerId = null;
+            this.#state.preloadWaitResolve = null;
+            resolve();
+          }, 1500);
+        });
       }
+      if (generation !== this.#preloadGeneration) return;
       if (this.#state.appBrowsers && this.#state.appBrowsers.size > 0) {
         this.ensureBadgeSyncLoop();
       }
@@ -912,11 +1513,15 @@
      * Determines whether the active floating app panel should attach to and slide from the right.
      * @returns {boolean} True if panel attaches to the right edge.
      */
-    isPanelAttachedToRight() {
+    isPanelAttachedToRight(targetApp = null) {
+      const app = targetApp || (this.#state.activeAppId ? this.#state.apps.find(a => a.id === this.#state.activeAppId) : null);
+      let baseRight = false;
       if (this.isPlacementVerticalBar()) {
-        return this.isVerticalBarOnRight();
+        baseRight = this.isVerticalBarOnRight();
+      } else {
+        baseRight = this.isSidebarRight();
       }
-      return this.isSidebarRight();
+      return app?.flipSide ? !baseRight : baseRight;
     }
 
     /**
@@ -1561,23 +2166,94 @@
         #zen-app-panel-root[data-insta-peek="true"] { opacity: 0 !important; pointer-events: none !important; visibility: hidden !important; transition: none !important; }
         #zen-app-panel-root:not([open]) #zen-app-panel-slider, #zen-app-panel-root[closing] #zen-app-panel-slider { box-shadow: none !important; }
         #zen-app-panel-clip { position: absolute; inset: 0; overflow: hidden; border-radius: var(--zen-border-radius, 8px); pointer-events: none; }
-        #zen-app-panel-slider { position: absolute; inset: 0; display: flex; flex-direction: column; border-radius: inherit; overflow: hidden; background: var(--tabpanels-background-color, #1e1e24); border: 1px solid color-mix(in srgb, var(--zen-primary-color, currentColor) 25%, rgba(255, 255, 255, 0.14)); box-sizing: border-box; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55), 0 2px 10px rgba(0, 0, 0, 0.30); pointer-events: auto; will-change: transform; }
-        #zen-app-panel-pill { position: absolute; top: 50%; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 4px; border-radius: 14px; background: var(--zen-colors-tertiary, var(--zen-colors-secondary, var(--zen-primary-color, light-dark(#f4b4b4, #362929)))); color: var(--zen-colors-tertiary-text, light-dark(#18181b, #f4f4f5)); border: 1px solid color-mix(in srgb, currentColor 12%, transparent); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35); z-index: 20; opacity: 0; transition: opacity 0.2s ease 0.3s; pointer-events: none; }
-        #zen-app-panel-root:not([open]) #zen-app-panel-pill, #zen-app-panel-root[closing] #zen-app-panel-pill { display: none !important; opacity: 0 !important; pointer-events: none !important; }
+        #zen-app-panel-slider { position: absolute; inset: 0; display: flex; flex-direction: column; border-radius: inherit; overflow: hidden; color-scheme: light dark; background: var(--zen-colors-tertiary, var(--tabpanels-background-color, light-dark(#ffffff, #1e1e24))); color: var(--zen-colors-tertiary-text, light-dark(#18181b, #f4f4f5)); border: 1px solid color-mix(in srgb, var(--zen-primary-color, currentColor) 25%, light-dark(rgba(0, 0, 0, 0.12), rgba(255, 255, 255, 0.14))); box-sizing: border-box; box-shadow: 0 8px 32px light-dark(rgba(0, 0, 0, 0.18), rgba(0, 0, 0, 0.55)), 0 2px 10px light-dark(rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.30)); pointer-events: auto; will-change: transform; }
+        #zen-app-panel-pill {
+          position: absolute;
+          top: 50%;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 4px;
+          width: 36px !important;
+          z-index: 45 !important;
+          opacity: 0;
+          transition: opacity 0.2s ease 0.3s;
+          pointer-events: none;
+          background: transparent !important;
+          border: none !important;
+          box-shadow: none !important;
+          padding: 0 !important;
+          box-sizing: border-box;
+        }
+        #zen-app-panel-root:not([open]) #zen-app-panel-pill,
+        #zen-app-panel-root[closing] #zen-app-panel-pill {
+          display: none !important;
+          opacity: 0 !important;
+          pointer-events: none !important;
+        }
         :root[zen-right-side="true"] #zen-app-panel-pill { left: 0; transform: translate(-50%, -50%); }
         :root:not([zen-right-side="true"]) #zen-app-panel-pill { right: 0; transform: translate(50%, -50%); }
         #zen-app-panel-root[data-panel-side="right"] #zen-app-panel-pill { left: 0 !important; right: auto !important; transform: translate(-50%, -50%) !important; }
         #zen-app-panel-root[data-panel-side="left"] #zen-app-panel-pill { right: 0 !important; left: auto !important; transform: translate(50%, -50%) !important; }
 
-        .zen-app-hover-zone { position: absolute; top: 0; bottom: 0; width: 44px; z-index: 10; pointer-events: none; background: transparent; }
+        .zen-app-hover-zone { position: absolute; top: 0; bottom: 0; width: 52px; z-index: 10; pointer-events: none; background: transparent; }
         #zen-app-panel-root[open] .zen-app-hover-zone { pointer-events: auto; }
-        :root[zen-right-side="true"] .zen-app-hover-zone { left: -22px; right: auto; }
-        :root:not([zen-right-side="true"]) .zen-app-hover-zone { right: -22px; left: auto; }
-        #zen-app-panel-root[data-panel-side="right"] .zen-app-hover-zone { left: -22px !important; right: auto !important; }
-        #zen-app-panel-root[data-panel-side="left"] .zen-app-hover-zone { right: -22px !important; left: auto !important; }
+        :root[zen-right-side="true"] .zen-app-hover-zone { left: -26px; right: auto; }
+        :root:not([zen-right-side="true"]) .zen-app-hover-zone { right: -26px; left: auto; }
+        #zen-app-panel-root[data-panel-side="right"] .zen-app-hover-zone { left: -26px !important; right: auto !important; }
+        #zen-app-panel-root[data-panel-side="left"] .zen-app-hover-zone { right: -26px !important; left: auto !important; }
 
-        .zen-app-hover-zone:hover ~ #zen-app-panel-pill, #zen-app-panel-pill:hover, .zen-app-resize-strip:hover ~ #zen-app-panel-pill { opacity: 1; pointer-events: auto; transition-delay: 0s; }
-        .zen-app-btn { appearance: none; background: transparent; border: none; border-radius: 8px; color: inherit; padding: 4px; width: 26px; height: 26px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background-color 0.15s ease; }
+        .zen-app-hover-zone:hover ~ #zen-app-panel-pill,
+        .zen-app-hover-zone-left:hover ~ #zen-app-panel-pill,
+        .zen-app-hover-zone-right:hover ~ #zen-app-panel-pill,
+        .zen-app-float-handle:hover ~ #zen-app-panel-pill,
+        #zen-app-panel-pill:hover,
+        .zen-app-resize-strip:hover ~ #zen-app-panel-pill {
+          opacity: 1 !important;
+          pointer-events: auto !important;
+          transition-delay: 0s !important;
+        }
+
+        .zen-app-pill-box {
+          position: static !important;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          width: 36px;
+          border-radius: 14px;
+          background: var(--zen-colors-tertiary, var(--zen-colors-secondary, var(--zen-primary-color, light-dark(#f4b4b4, #362929))));
+          color: var(--zen-colors-tertiary-text, light-dark(#18181b, #f4f4f5));
+          border: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+          box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+          box-sizing: border-box;
+          pointer-events: auto !important;
+          transform: none !important;
+          left: auto !important;
+          right: auto !important;
+          top: auto !important;
+          opacity: 1 !important;
+        }
+
+        #zen-app-panel-pill-main {
+          gap: 4px;
+          padding: 6px 4px;
+        }
+
+        #zen-app-panel-close-box {
+          justify-content: center;
+          padding: 4px;
+          height: 36px;
+          cursor: pointer;
+        }
+        #zen-app-panel-close-box:hover .zen-app-close-btn {
+          background-color: rgba(255, 77, 77, 0.22) !important;
+          color: #ff6666 !important;
+        }
+        #zen-app-panel-close-box:hover .zen-app-close-btn svg {
+          stroke: #ff6666 !important;
+        }
+
+        .zen-app-btn { appearance: none; background: transparent; border: none; border-radius: 8px; color: inherit; padding: 4px; width: 26px; height: 26px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background-color 0.15s ease; box-sizing: border-box; }
         .zen-app-btn:hover { background-color: color-mix(in srgb, currentColor 15%, transparent); }
         .zen-app-btn svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; display: block; }
         .zen-app-btn[data-pinned="true"] { background-color: color-mix(in srgb, currentColor 20%, transparent); }
@@ -1589,15 +2265,373 @@
         .zen-app-close-btn:hover { background-color: rgba(255, 77, 77, 0.22) !important; color: #ff6666 !important; }
         .zen-app-close-btn svg { stroke: #ff4d4d !important; stroke-width: 2 !important; }
         .zen-app-close-btn:hover svg { stroke: #ff6666 !important; }
-        .zen-app-grabber { cursor: ew-resize; padding: 4px 2px; width: 26px; height: 24px; display: flex; align-items: center; justify-content: center; color: inherit; border-radius: 8px; user-select: none; transition: background-color 0.15s ease; }
+        .zen-app-grabber { cursor: grab; padding: 4px 2px; width: 26px; height: 24px; display: flex; align-items: center; justify-content: center; color: inherit; border-radius: 8px; user-select: none; transition: background-color 0.15s ease; box-sizing: border-box; }
         .zen-app-grabber:hover { background-color: color-mix(in srgb, currentColor 15%, transparent); }
+        .zen-app-grabber:active { cursor: grabbing; }
         .zen-app-grabber svg { width: 10px; height: 14px; fill: currentColor; stroke: none; display: block; }
         .zen-app-resize-strip { position: absolute; top: 0; bottom: 0; width: 10px; cursor: ew-resize; z-index: 15; background: transparent; pointer-events: none; }
-        #zen-app-panel-root[open] .zen-app-resize-strip { pointer-events: auto; }
+        #zen-app-panel-root[open]:not([data-floating="true"]) .zen-app-resize-strip { pointer-events: auto; }
         :root[zen-right-side="true"] .zen-app-resize-strip { left: -5px; right: auto; }
         :root:not([zen-right-side="true"]) .zen-app-resize-strip { right: -5px; left: auto; }
         #zen-app-panel-root[data-panel-side="right"] .zen-app-resize-strip { left: -5px !important; right: auto !important; }
         #zen-app-panel-root[data-panel-side="left"] .zen-app-resize-strip { right: -5px !important; left: auto !important; }
+
+        /* Floating Panel Mode Styles */
+        #zen-app-panel-root[data-floating="true"] {
+          min-width: 320px !important;
+          min-height: 360px !important;
+          box-shadow: 0 16px 48px light-dark(rgba(0, 0, 0, 0.28), rgba(0, 0, 0, 0.65)), 0 4px 16px light-dark(rgba(0, 0, 0, 0.12), rgba(0, 0, 0, 0.40)) !important;
+          border-radius: var(--zen-border-radius, 10px);
+          transition: none;
+        }
+        #zen-app-panel-root[data-floating="true"] .zen-app-resize-strip {
+          display: none !important;
+          pointer-events: none !important;
+        }
+        #zen-app-panel-root[data-floating="true"] #zen-app-panel-slider {
+          transform: none !important;
+        }
+        #zen-app-panel-root[data-floating="true"][data-animating="true"] {
+          transition: left 0.24s cubic-bezier(0.22, 1, 0.36, 1),
+                      top 0.24s cubic-bezier(0.22, 1, 0.36, 1),
+                      width 0.24s cubic-bezier(0.22, 1, 0.36, 1),
+                      height 0.24s cubic-bezier(0.22, 1, 0.36, 1) !important;
+        }
+
+        /* Floating Pill Side Positioning */
+        #zen-app-panel-root[data-floating="true"][data-pill-side="left"] #zen-app-panel-pill {
+          left: 0 !important;
+          right: auto !important;
+          transform: translate(-50%, -50%) !important;
+        }
+        #zen-app-panel-root[data-floating="true"][data-pill-side="right"] #zen-app-panel-pill {
+          right: 0 !important;
+          left: auto !important;
+          transform: translate(50%, -50%) !important;
+        }
+
+        /* Dual hover zones for floating pill detection */
+        .zen-app-hover-zone-left { position: absolute; top: 0; bottom: 0; left: -26px; width: 52px; z-index: 10; pointer-events: none; background: transparent; }
+        .zen-app-hover-zone-right { position: absolute; top: 0; bottom: 0; right: -26px; width: 52px; z-index: 10; pointer-events: none; background: transparent; }
+        #zen-app-panel-root[open][data-floating="true"] .zen-app-hover-zone-left,
+        #zen-app-panel-root[open][data-floating="true"] .zen-app-hover-zone-right {
+          pointer-events: auto;
+        }
+        .zen-app-hover-zone-left:hover ~ #zen-app-panel-pill,
+        .zen-app-hover-zone-right:hover ~ #zen-app-panel-pill {
+          opacity: 1 !important;
+          pointer-events: auto !important;
+          transition-delay: 0s !important;
+        }
+
+        /* Floating Panel 8-direction Resize Handles */
+        .zen-app-float-handle {
+          position: absolute;
+          z-index: 30;
+          pointer-events: none;
+          background: transparent;
+        }
+        #zen-app-panel-root[open][data-floating="true"] .zen-app-float-handle {
+          pointer-events: auto;
+        }
+        .zen-app-float-handle[data-dir="n"] { top: -4px; left: 8px; right: 8px; height: 8px; cursor: ns-resize; }
+        .zen-app-float-handle[data-dir="s"] { bottom: -4px; left: 8px; right: 8px; height: 8px; cursor: ns-resize; }
+        .zen-app-float-handle[data-dir="w"] { top: 8px; bottom: 8px; left: -4px; width: 8px; cursor: ew-resize; }
+        .zen-app-float-handle[data-dir="e"] { top: 8px; bottom: 8px; right: -4px; width: 8px; cursor: ew-resize; }
+        .zen-app-float-handle[data-dir="nw"] { top: -6px; left: -6px; width: 14px; height: 14px; cursor: nwse-resize; }
+        .zen-app-float-handle[data-dir="ne"] { top: -6px; right: -6px; width: 14px; height: 14px; cursor: nesw-resize; }
+        .zen-app-float-handle[data-dir="sw"] { bottom: -6px; left: -6px; width: 14px; height: 14px; cursor: nesw-resize; }
+        .zen-app-float-handle[data-dir="se"] { bottom: -6px; right: -6px; width: 14px; height: 14px; cursor: nwse-resize; }
+
+        /* Floating Pop-in / Pop-out Keyframes */
+        @keyframes zenAppPopIn {
+          0% { opacity: 0; transform: scale(0.95); }
+          100% { opacity: 1; transform: scale(1); }
+        }
+        @keyframes zenAppPopOut {
+          0% { opacity: 1; transform: scale(1); }
+          100% { opacity: 0; transform: scale(0.95); }
+        }
+        #zen-app-panel-root[data-pop-state="in"] {
+          animation: zenAppPopIn 0.22s cubic-bezier(0.22, 1, 0.36, 1) forwards !important;
+        }
+        #zen-app-panel-root[data-pop-state="out"] {
+          animation: zenAppPopOut 0.16s cubic-bezier(0.22, 1, 0.36, 1) forwards !important;
+        }
+
+        /* Locked pin style when floating */
+        #zen-app-panel-root[data-floating="true"] .zen-app-btn[data-pinned="true"] {
+          opacity: 0.85;
+          cursor: default;
+        }
+
+        /* Dock Snap Ghost Preview */
+        #zen-app-panel-dock-ghost {
+          position: fixed;
+          display: none;
+          pointer-events: none;
+          z-index: 2147483640 !important;
+          border-radius: var(--zen-border-radius, 10px);
+          background-color: color-mix(in srgb, var(--zen-primary-color, #707ac2) 22%, transparent);
+          border: 3px dashed color-mix(in srgb, var(--zen-primary-color, #707ac2) 90%, white);
+          box-shadow: 0 0 28px color-mix(in srgb, var(--zen-primary-color, #707ac2) 40%, transparent);
+          box-sizing: border-box;
+          transition: left 0.12s ease, top 0.12s ease, width 0.12s ease, height 0.12s ease;
+        }
+        #zen-app-panel-dock-ghost[data-active="true"] {
+          display: block !important;
+        }
+
+        /* Drag & Resize Shield to prevent remote browser from eating pointer events */
+        #zen-app-panel-drag-shield {
+          position: fixed;
+          inset: 0;
+          z-index: 2147483647 !important;
+          background: transparent;
+          display: none;
+          user-select: none;
+        }
+        #zen-app-panel-drag-shield[data-active="true"] {
+          display: block;
+        }
+
+        .zen-app-mobile-btn,
+        .zen-app-mobile-btn[data-active="true"] {
+          background-color: transparent !important;
+          color: inherit !important;
+        }
+        .zen-app-mobile-btn:hover,
+        .zen-app-mobile-btn[data-active="true"]:hover {
+          background-color: color-mix(in srgb, currentColor 15%, transparent) !important;
+        }
+        .zen-app-mobile-btn svg,
+        .zen-app-mobile-btn[data-active="true"] svg {
+          stroke: currentColor !important;
+        }
+
+        /* ==========================================================================
+         * Zentral Apps Navigation Toolbar
+         * ========================================================================== */
+        #zen-app-panel-navbar {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          height: 38px;
+          min-height: 38px;
+          padding: 0 8px;
+          color-scheme: light dark;
+          background: var(--zen-colors-tertiary, var(--zen-colors-secondary, light-dark(rgba(245, 245, 247, 0.96), rgba(30, 30, 36, 0.96))));
+          color: var(--zen-colors-primary-foreground, light-dark(#18181b, #f4f4f5));
+          backdrop-filter: blur(16px);
+          border-bottom: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+          box-sizing: border-box;
+          z-index: 10;
+          flex-shrink: 0;
+          user-select: none;
+        }
+
+        /* Navbar & Slider - Light Mode */
+        :root[zentral-effective-theme="light"] #zen-app-panel-slider,
+        :root:not([zentral-effective-theme="dark"]) #zen-app-panel-slider {
+          background: #ffffff !important;
+          color: #18181b !important;
+          border: 1px solid rgba(0, 0, 0, 0.12) !important;
+          box-shadow: 0 12px 36px rgba(0, 0, 0, 0.14), 0 2px 10px rgba(0, 0, 0, 0.08) !important;
+        }
+        :root[zentral-effective-theme="light"] #zen-app-panel-navbar,
+        :root:not([zentral-effective-theme="dark"]) #zen-app-panel-navbar {
+          background: rgba(245, 245, 247, 0.96) !important;
+          color: #18181b !important;
+          border-bottom: 1px solid rgba(0, 0, 0, 0.1) !important;
+        }
+        :root[zentral-effective-theme="light"] .zen-app-nav-btn,
+        :root:not([zentral-effective-theme="dark"]) .zen-app-nav-btn {
+          color: #27272a !important;
+        }
+        :root[zentral-effective-theme="light"] .zen-app-nav-btn:hover:not(:disabled),
+        :root:not([zentral-effective-theme="dark"]) .zen-app-nav-btn:hover:not(:disabled) {
+          background-color: rgba(0, 0, 0, 0.08) !important;
+        }
+        :root[zentral-effective-theme="light"] .zen-app-nav-btn svg,
+        :root:not([zentral-effective-theme="dark"]) .zen-app-nav-btn svg {
+          stroke: #27272a !important;
+        }
+        :root[zentral-effective-theme="light"] .zen-app-nav-zoom-group,
+        :root:not([zentral-effective-theme="dark"]) .zen-app-nav-zoom-group {
+          background: rgba(0, 0, 0, 0.05) !important;
+        }
+        :root[zentral-effective-theme="light"] .zen-app-nav-zoom-label,
+        :root:not([zentral-effective-theme="dark"]) .zen-app-nav-zoom-label {
+          color: #27272a !important;
+        }
+        :root[zentral-effective-theme="light"] .zen-app-nav-url-wrap,
+        :root:not([zentral-effective-theme="dark"]) .zen-app-nav-url-wrap {
+          background: rgba(0, 0, 0, 0.04) !important;
+          border: 1px solid rgba(0, 0, 0, 0.12) !important;
+        }
+        :root[zentral-effective-theme="light"] .zen-app-nav-url-wrap:focus-within,
+        :root:not([zentral-effective-theme="dark"]) .zen-app-nav-url-wrap:focus-within {
+          border-color: var(--zen-primary-color, #707ac2) !important;
+          background: rgba(0, 0, 0, 0.07) !important;
+        }
+        :root[zentral-effective-theme="light"] .zen-app-nav-url-input,
+        :root:not([zentral-effective-theme="dark"]) .zen-app-nav-url-input {
+          color: #18181b !important;
+        }
+
+        /* Navbar & Slider - Dark Mode */
+        :root[zentral-effective-theme="dark"] #zen-app-panel-slider {
+          background: #1e1e24 !important;
+          color: #f4f4f5 !important;
+          border: 1px solid rgba(255, 255, 255, 0.14) !important;
+          box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55), 0 2px 10px rgba(0, 0, 0, 0.30) !important;
+        }
+        :root[zentral-effective-theme="dark"] #zen-app-panel-navbar {
+          background: rgba(30, 30, 36, 0.96) !important;
+          color: #f4f4f5 !important;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+        }
+        :root[zentral-effective-theme="dark"] .zen-app-nav-btn {
+          color: #f4f4f5 !important;
+        }
+        :root[zentral-effective-theme="dark"] .zen-app-nav-btn:hover:not(:disabled) {
+          background-color: rgba(255, 255, 255, 0.12) !important;
+        }
+        :root[zentral-effective-theme="dark"] .zen-app-nav-btn svg {
+          stroke: #f4f4f5 !important;
+        }
+        :root[zentral-effective-theme="dark"] .zen-app-nav-zoom-group {
+          background: rgba(255, 255, 255, 0.06) !important;
+        }
+        :root[zentral-effective-theme="dark"] .zen-app-nav-zoom-label {
+          color: #f4f4f5 !important;
+        }
+        :root[zentral-effective-theme="dark"] .zen-app-nav-url-wrap {
+          background: rgba(255, 255, 255, 0.06) !important;
+          border: 1px solid rgba(255, 255, 255, 0.14) !important;
+        }
+        :root[zentral-effective-theme="dark"] .zen-app-nav-url-wrap:focus-within {
+          border-color: var(--zen-primary-color, #707ac2) !important;
+          background: rgba(255, 255, 255, 0.10) !important;
+        }
+        :root[zentral-effective-theme="dark"] .zen-app-nav-url-input {
+          color: #f4f4f5 !important;
+        }
+        .zen-app-nav-btn {
+          appearance: none;
+          background: transparent;
+          border: none;
+          border-radius: 6px;
+          color: inherit;
+          padding: 4px;
+          width: 26px;
+          height: 26px;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: background-color 0.15s ease, opacity 0.15s ease;
+          flex-shrink: 0;
+        }
+        .zen-app-nav-btn:hover:not(:disabled) {
+          background-color: color-mix(in srgb, currentColor 14%, transparent);
+        }
+        .zen-app-nav-btn:disabled {
+          opacity: 0.35;
+          cursor: default;
+        }
+        .zen-app-nav-btn svg {
+          width: 14px;
+          height: 14px;
+          fill: none;
+          stroke: currentColor;
+          stroke-width: 1.8;
+          stroke-linecap: round;
+          stroke-linejoin: round;
+          display: block;
+        }
+        .zen-app-nav-zoom-group {
+          display: flex;
+          align-items: center;
+          gap: 2px;
+          padding: 0 2px;
+          border-radius: 6px;
+          background: color-mix(in srgb, currentColor 6%, transparent);
+          flex-shrink: 0;
+        }
+        .zen-app-nav-zoom-group .zen-app-nav-btn {
+          width: 22px;
+          height: 22px;
+          padding: 2px;
+        }
+        .zen-app-nav-zoom-label {
+          font-size: 11px;
+          font-weight: 500;
+          font-family: var(--font-primary, system-ui, sans-serif);
+          padding: 0 4px;
+          min-width: 34px;
+          text-align: center;
+          cursor: pointer;
+          border-radius: 4px;
+          user-select: none;
+          transition: background-color 0.15s ease;
+        }
+        .zen-app-nav-zoom-label:hover {
+          background-color: color-mix(in srgb, currentColor 12%, transparent);
+        }
+        .zen-app-nav-url-wrap {
+          display: flex;
+          align-items: center;
+          flex: 1;
+          min-width: 0;
+          height: 26px;
+          background: color-mix(in srgb, currentColor 8%, transparent);
+          border: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+          border-radius: 6px;
+          padding: 0 6px;
+          gap: 4px;
+          transition: border-color 0.15s ease, background-color 0.15s ease;
+        }
+        .zen-app-nav-url-wrap:focus-within {
+          border-color: var(--zen-primary-color, #707ac2);
+          background: color-mix(in srgb, currentColor 12%, transparent);
+        }
+        .zen-app-nav-url-input {
+          flex: 1;
+          min-width: 0;
+          background: transparent;
+          border: none;
+          outline: none;
+          color: inherit;
+          font-size: 12px;
+          font-family: inherit;
+          padding: 0;
+        }
+        .zen-app-nav-update-btn {
+          appearance: none;
+          background: var(--zen-primary-color, #707ac2);
+          color: #ffffff;
+          border: none;
+          border-radius: 4px;
+          padding: 2px 8px;
+          font-size: 11px;
+          font-weight: 600;
+          cursor: pointer;
+          display: none;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+          transition: background-color 0.15s ease, opacity 0.15s ease;
+        }
+        .zen-app-nav-update-btn[data-visible="true"] {
+          display: inline-flex !important;
+        }
+        .zen-app-nav-update-btn:hover {
+          opacity: 0.88;
+        }
+        .zen-app-nav-update-btn:active {
+          opacity: 0.75;
+        }
 
         /* ==========================================================================
          * Zentral Apps Vertical Bar
@@ -2366,7 +3400,8 @@
         window.addEventListener("resize", this._refreshGridRectListener, { passive: true });
         if (typeof ResizeObserver !== "undefined" && this.#dom.grid) {
           try {
-            new ResizeObserver(refreshGridRect).observe(this.#dom.grid);
+            this.#gridResizeObserver = new ResizeObserver(refreshGridRect);
+            this.#gridResizeObserver.observe(this.#dom.grid);
           } catch (_) {}
         }
 
@@ -2640,7 +3675,22 @@
         clip.appendChild(panel);
 
         const hoverZone = document.createElement("div"); hoverZone.className = "zen-app-hover-zone";
+        const hoverZoneLeft = document.createElement("div"); hoverZoneLeft.className = "zen-app-hover-zone-left";
+        const hoverZoneRight = document.createElement("div"); hoverZoneRight.className = "zen-app-hover-zone-right";
+
+        hoverZoneLeft.addEventListener("mouseenter", () => {
+          if (this.#state.isFloating && this.#dom.root) {
+            this.#dom.root.setAttribute("data-pill-side", "left");
+          }
+        });
+        hoverZoneRight.addEventListener("mouseenter", () => {
+          if (this.#state.isFloating && this.#dom.root) {
+            this.#dom.root.setAttribute("data-pill-side", "right");
+          }
+        });
+
         const pill = document.createElement("div"); pill.id = "zen-app-panel-pill";
+        const pillMain = document.createElement("div"); pillMain.id = "zen-app-panel-pill-main"; pillMain.className = "zen-app-pill-box";
 
         const pinBtn = document.createElement("button"); pinBtn.className = "zen-app-btn"; pinBtn.title = "Pin panel";
         pinBtn.appendChild(this.#createSVG(SVG_STRINGS.PIN));
@@ -2650,9 +3700,9 @@
         expandBtn.appendChild(this.#createSVG(SVG_STRINGS.EXPAND));
         expandBtn.addEventListener("click", (e) => { e.stopPropagation(); this.toggleExpand(); });
 
-        const grabberBtn = document.createElement("div"); grabberBtn.className = "zen-app-grabber"; grabberBtn.title = "Drag to resize";
+        const grabberBtn = document.createElement("div"); grabberBtn.className = "zen-app-grabber"; grabberBtn.title = "Drag to detach";
         grabberBtn.appendChild(this.#createSVG(SVG_STRINGS.GRABBER));
-        grabberBtn.addEventListener("mousedown", this.startResize);
+        grabberBtn.addEventListener("pointerdown", this.beginDetachGesture);
 
         const refreshBtn = document.createElement("button"); refreshBtn.className = "zen-app-btn zen-app-refresh-btn"; refreshBtn.title = "Refresh app";
         refreshBtn.appendChild(this.#createSVG(SVG_STRINGS.REFRESH));
@@ -2660,30 +3710,187 @@
           e.stopPropagation();
           if (this.#state.activeAppId) {
             refreshBtn.classList.add("zen-app-refresh-spinning");
-            setTimeout(() => refreshBtn.classList.remove("zen-app-refresh-spinning"), 450);
+            this.#setTimeout(() => refreshBtn.classList.remove("zen-app-refresh-spinning"), 450);
             this.refreshApp(this.#state.activeAppId);
           }
         });
 
+        const mobileBtn = document.createElement("button"); mobileBtn.className = "zen-app-btn zen-app-mobile-btn"; mobileBtn.title = "Toggle Mobile Mode";
+        mobileBtn.appendChild(this.#createSVG(SVG_STRINGS.MOBILE));
+        mobileBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          if (this.#state.activeAppId) {
+            this.toggleMobileMode(this.#state.activeAppId);
+          }
+        });
+
+        const closeBox = document.createElement("div"); closeBox.id = "zen-app-panel-close-box"; closeBox.className = "zen-app-pill-box";
+        closeBox.title = "Close panel";
         const closeBtn = document.createElement("button"); closeBtn.className = "zen-app-btn zen-app-close-btn"; closeBtn.title = "Close panel";
         closeBtn.appendChild(this.#createSVG(SVG_STRINGS.CLOSE_X));
         closeBtn.addEventListener("click", (e) => { e.stopPropagation(); this.closePanel(); });
+        closeBox.addEventListener("click", (e) => { e.stopPropagation(); this.closePanel(); });
+        closeBox.appendChild(closeBtn);
 
-        pill.append(pinBtn, expandBtn, grabberBtn, refreshBtn, closeBtn);
+        // Buttons order top to bottom: Refresh app, UA toggle, Drag to detach, Expand panel, Pin panel
+        pillMain.append(refreshBtn, mobileBtn, grabberBtn, expandBtn, pinBtn);
+        pill.append(pillMain, closeBox);
+
+        const navbar = document.createElement("div");
+        navbar.id = "zen-app-panel-navbar";
+        navbar.style.display = "none";
+
+        const navBackBtn = document.createElement("button");
+        navBackBtn.className = "zen-app-nav-btn";
+        navBackBtn.title = "Back";
+        navBackBtn.appendChild(this.#createSVG(SVG_STRINGS.NAV_BACK));
+        navBackBtn.disabled = true;
+        navBackBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          this.navGoBack();
+        });
+
+        const navForwardBtn = document.createElement("button");
+        navForwardBtn.className = "zen-app-nav-btn";
+        navForwardBtn.title = "Forward";
+        navForwardBtn.appendChild(this.#createSVG(SVG_STRINGS.NAV_FORWARD));
+        navForwardBtn.disabled = true;
+        navForwardBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          this.navGoForward();
+        });
+
+        const navReloadBtn = document.createElement("button");
+        navReloadBtn.className = "zen-app-nav-btn zen-app-nav-reload-btn";
+        navReloadBtn.title = "Reload";
+        navReloadBtn.appendChild(this.#createSVG(SVG_STRINGS.REFRESH));
+        navReloadBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          this.navReloadOrStop();
+        });
+
+        const navZoomGroup = document.createElement("div");
+        navZoomGroup.className = "zen-app-nav-zoom-group";
+
+        const navZoomOutBtn = document.createElement("button");
+        navZoomOutBtn.className = "zen-app-nav-btn";
+        navZoomOutBtn.title = "Zoom Out";
+        navZoomOutBtn.textContent = "−";
+        navZoomOutBtn.style.fontSize = "14px";
+        navZoomOutBtn.style.fontWeight = "bold";
+        navZoomOutBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          this.navZoomStep(-1);
+        });
+
+        const navZoomLabel = document.createElement("span");
+        navZoomLabel.className = "zen-app-nav-zoom-label";
+        navZoomLabel.title = "Click to reset zoom to 100%";
+        navZoomLabel.textContent = "100%";
+        navZoomLabel.addEventListener("click", (e) => {
+          e.stopPropagation();
+          this.navZoomReset();
+        });
+
+        const navZoomInBtn = document.createElement("button");
+        navZoomInBtn.className = "zen-app-nav-btn";
+        navZoomInBtn.title = "Zoom In";
+        navZoomInBtn.textContent = "+";
+        navZoomInBtn.style.fontSize = "14px";
+        navZoomInBtn.style.fontWeight = "bold";
+        navZoomInBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          this.navZoomStep(1);
+        });
+
+        navZoomGroup.append(navZoomOutBtn, navZoomLabel, navZoomInBtn);
+
+        const navUrlWrap = document.createElement("div");
+        navUrlWrap.className = "zen-app-nav-url-wrap";
+
+        const navUrlInput = document.createElement("input");
+        navUrlInput.type = "text";
+        navUrlInput.className = "zen-app-nav-url-input";
+        navUrlInput.placeholder = "Enter URL...";
+        navUrlInput.spellcheck = false;
+        navUrlInput.addEventListener("keydown", (e) => this.handleNavUrlKeyDown(e));
+        navUrlInput.addEventListener("input", () => this.syncNavUpdateBtnState());
+        navUrlInput.addEventListener("click", (e) => e.stopPropagation());
+
+        const navUpdateBtn = document.createElement("button");
+        navUpdateBtn.className = "zen-app-nav-update-btn";
+        navUpdateBtn.title = "Save current URL as default for this app";
+        navUpdateBtn.textContent = "Update App";
+        navUpdateBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          this.navUpdateAppUrl();
+        });
+
+        navUrlWrap.append(navUrlInput, navUpdateBtn);
+
+        navbar.append(navBackBtn, navForwardBtn, navReloadBtn, navZoomGroup, navUrlWrap);
+        panel.appendChild(navbar);
 
         const strip = document.createElement("div"); strip.className = "zen-app-resize-strip";
         strip.addEventListener("mousedown", this.startResize);
 
-        root.append(clip, hoverZone, pill, strip);
+        // 8 Directional floating resize handles
+        const resizeHandles = [];
+        const dirs = ["n", "s", "e", "w", "ne", "nw", "se", "sw"];
+        dirs.forEach(dir => {
+          const h = document.createElement("div");
+          h.className = "zen-app-float-handle";
+          h.dataset.dir = dir;
+          h.addEventListener("pointerdown", (e) => this.startFloatResize(dir, e));
+          root.appendChild(h);
+          resizeHandles.push(h);
+        });
+
+        // Snap Ghost Preview Element
+        let ghost = document.getElementById("zen-app-panel-dock-ghost");
+        if (!ghost) {
+          ghost = document.createElement("div");
+          ghost.id = "zen-app-panel-dock-ghost";
+          (document.body || document.documentElement).appendChild(ghost);
+        }
+
+        // Pointer Shield Element
+        let shield = document.getElementById("zen-app-panel-drag-shield");
+        if (!shield) {
+          shield = document.createElement("div");
+          shield.id = "zen-app-panel-drag-shield";
+          (document.body || document.documentElement).appendChild(shield);
+        }
+
+        root.append(clip, hoverZone, hoverZoneLeft, hoverZoneRight, strip, pill);
         document.documentElement.appendChild(root);
 
         this.#dom.root = root; 
         this.#dom.clip = clip; 
         this.#dom.panel = panel; 
         this.#dom.pill = pill; 
+        this.#dom.pillMain = pillMain;
+        this.#dom.closeBox = closeBox;
+        this.#dom.closeBtn = closeBtn;
         this.#dom.pinBtn = pinBtn;
         this.#dom.expandBtn = expandBtn;
+        this.#dom.grabberBtn = grabberBtn;
         this.#dom.refreshBtn = refreshBtn;
+        this.#dom.mobileBtn = mobileBtn;
+        this.#dom.dockGhost = ghost;
+        this.#dom.dragShield = shield;
+        this.#dom.resizeHandles = resizeHandles;
+        this.#dom.hoverZoneLeft = hoverZoneLeft;
+        this.#dom.hoverZoneRight = hoverZoneRight;
+        this.#dom.navbar = navbar;
+        this.#dom.navBackBtn = navBackBtn;
+        this.#dom.navForwardBtn = navForwardBtn;
+        this.#dom.navReloadBtn = navReloadBtn;
+        this.#dom.navZoomOutBtn = navZoomOutBtn;
+        this.#dom.navZoomLabel = navZoomLabel;
+        this.#dom.navZoomInBtn = navZoomInBtn;
+        this.#dom.navUrlInput = navUrlInput;
+        this.#dom.navUpdateBtn = navUpdateBtn;
       }
     }
 
@@ -3034,7 +4241,7 @@
         }
       }
 
-      let raw = (title || "").trim();
+      let raw = typeof title === "string" ? title.trim() : "";
       const rawLower = raw.toLowerCase().replace(/^www\./, "");
       if (WELL_KNOWN_SERVICES[rawLower]) return WELL_KNOWN_SERVICES[rawLower];
       for (const [knownHost, knownName] of Object.entries(WELL_KNOWN_SERVICES)) {
@@ -3150,6 +4357,11 @@
         const togglePanel = () => {
           if (this.#state.activeAppId === app.id) {
             this.closePanel();
+          } else if (this.#state.isFloating) {
+            this.closePanel();
+            setTimeout(() => {
+              this.openPanel(app);
+            }, 180);
           } else {
             this.openPanel(app);
           }
@@ -3217,7 +4429,7 @@
         btn.addEventListener("dragend", () => { 
           draggedAppId = null; 
           btn.style.opacity = "1"; 
-          setTimeout(() => { wasDragged = false; }, 60);
+          this.#setTimeout(() => { wasDragged = false; }, 60);
           this.renderGrid(); 
         });
         btn.addEventListener("dragover", (e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; if (draggedAppId && draggedAppId !== app.id) { btn.style.transform = "scale(1.15)"; btn.style.zIndex = "5"; } });
@@ -3294,7 +4506,9 @@
         }
       }
 
-      requestAnimationFrame(() => {
+      if (this.#state.positionRafId) cancelAnimationFrame(this.#state.positionRafId);
+      this.#state.positionRafId = requestAnimationFrame(() => {
+        this.#state.positionRafId = null;
         this.updateScrollMask();
         if (isVerticalBar) {
           this.updateVerticalBarAddBtnPlacement();
@@ -3311,7 +4525,7 @@
       const id = "app_" + Date.now() + "_" + Math.floor(Math.random() * 1000);
       const crispIcon = url.startsWith("http") ? `page-icon:${url}` : (icon || `page-icon:${url}`);
       const cleanTitle = this.formatAppDisplayName(title, url);
-      const newApp = { id, url, title: cleanTitle, icon: crispIcon, workspaceId: "all" };
+      const newApp = { id, url, title: cleanTitle, icon: crispIcon, workspaceId: "all", mobile: false, zoom: 1 };
       this.#state.apps.push(newApp);
       this.saveApps();
       this.renderGrid();
@@ -3325,9 +4539,8 @@
       
       if (this.#state.activeAppId === id) this.closePanel();
       
-      const b = this.#state.appBrowsers.get(id);
-      if (b && b.isConnected) b.parentNode.removeChild(b);
-      this.#state.appBrowsers.delete(id);
+      this.#disposeAppBrowser(id);
+      this.#state.floatRects.delete(id);
       if (!this.#state.appBrowsers || this.#state.appBrowsers.size === 0) {
         this.stopBadgeSyncLoop();
       }
@@ -3346,7 +4559,12 @@
     }
 
     openPanel(app) {
+      if (!this.#dom.panel) return;
+      this.#panelGeneration++;
+      this.#cancelPointerGesture();
+      if (this.#state.panelAnimationRafId) cancelAnimationFrame(this.#state.panelAnimationRafId);
       Core.log("ZentralApps", "openPanel called for app:", app.id, "URL:", app.url);
+      Core.updateEffectiveTheme();
       if (this.#state.closeTimerId) {
         clearTimeout(this.#state.closeTimerId);
         this.#state.closeTimerId = null;
@@ -3360,25 +4578,99 @@
         this.#dom.root.style.transform = "";
       }
       this.#state.activeAppId = app.id;
-      this.#state.isPinned = false;
       this.#state.isExpanded = false;
       this.#syncVbCompactHeight();
       document.documentElement.setAttribute("zentral-app-panel-open", "true");
       this.#syncBarAnimVars();
       this.setAutohideHovered(true);
       this.#state.preExpandWidth = null;
-      if(this.#dom.pinBtn) this.#dom.pinBtn.setAttribute("data-pinned", "false");
+
+      let hasSavedFloat = this.#state.floatRects.has(app.id);
+      if (hasSavedFloat) {
+        const saved = this.#state.floatRects.get(app.id);
+        if (!saved || typeof saved.w !== "number" || isNaN(saved.w) || saved.w < 320 ||
+            typeof saved.h !== "number" || isNaN(saved.h) || saved.h < 200) {
+          this.#state.floatRects.delete(app.id);
+          hasSavedFloat = false;
+        }
+      }
+      this.#state.isFloating = hasSavedFloat;
+      this.#state.isPinned = hasSavedFloat ? true : false;
+
+      if(this.#dom.pinBtn) {
+        this.#dom.pinBtn.setAttribute("data-pinned", this.#state.isPinned ? "true" : "false");
+        this.#dom.pinBtn.title = hasSavedFloat ? "Pinned (Floating)" : (this.#state.isPinned ? "Unpin panel" : "Pin panel");
+      }
       if(this.#dom.expandBtn) {
         this.#dom.expandBtn.title = "Expand panel";
         this.#dom.expandBtn.replaceChildren(this.#createSVG(SVG_STRINGS.EXPAND));
       }
+      if(this.#dom.mobileBtn) {
+        this.#dom.mobileBtn.setAttribute("data-active", app.mobile ? "true" : "false");
+        this.#dom.mobileBtn.title = app.mobile ? "Switch to Desktop Mode" : "Switch to Mobile Mode";
+        this.#dom.mobileBtn.replaceChildren(this.#createSVG(app.mobile ? SVG_STRINGS.DESKTOP : SVG_STRINGS.MOBILE));
+      }
+      this.applyNavbarPref();
+      if(this.#dom.navZoomLabel) {
+        const zoom = (typeof app.zoom === "number" && !isNaN(app.zoom)) ? app.zoom : 1;
+        this.#dom.navZoomLabel.textContent = `${Math.round(zoom * 100)}%`;
+      }
+      this.syncNavState(app);
       
       const tiles = document.querySelectorAll(".zen-app-tile[data-app-id]");
       tiles.forEach(tile => tile.dataset.active = (tile.dataset.appId === app.id) ? "true" : "false");
       
       const targetWidth = app.width || this.loadWidth();
       this.updateWidthVar(Math.max(Constants.Apps.MIN_WIDTH_PX, targetWidth));
-      this.positionPanel();
+
+      const Geo = this.#geo;
+      const { bounds } = this.getContentAreaGeometry();
+
+      if (hasSavedFloat) {
+        const savedRect = this.#state.floatRects.get(app.id);
+        const clamped = Geo ? Geo.clampRect(savedRect, bounds, { minW: Constants.Apps.MIN_WIDTH_PX, minH: 360 }, { allowOverflow: true, minVisibleMargin: 80 }) : {
+          x: Math.max(bounds.left - savedRect.w + 80, Math.min(savedRect.x, bounds.left + bounds.width - 80)),
+          y: Math.max(bounds.top, Math.min(savedRect.y, bounds.top + bounds.height - 80)),
+          w: Math.max(Constants.Apps.MIN_WIDTH_PX, savedRect.w),
+          h: Math.max(360, savedRect.h)
+        };
+        this.#state.floatRects.set(app.id, clamped);
+
+        const root = this.#dom.root;
+        if (root) {
+          root.removeAttribute("data-panel-side");
+          root.style.transform = "none";
+          root.style.transition = "none";
+          root.style.left = clamped.x + "px";
+          root.style.top = clamped.y + "px";
+          root.style.width = clamped.w + "px";
+          root.style.height = clamped.h + "px";
+          root.style.right = "auto";
+          root.style.bottom = "auto";
+          root.setAttribute("data-floating", "true");
+
+          const preferredSide = this.isPanelAttachedToRight(app) ? "left" : "right";
+          const pillSide = Geo ? Geo.pickPillSide(clamped, bounds, 44, preferredSide) : preferredSide;
+          root.setAttribute("data-pill-side", pillSide);
+
+          if (this.#dom.grabberBtn) {
+            this.#dom.grabberBtn.title = "Drag to move";
+          }
+        }
+      } else {
+        this.#state.isFloating = false;
+        if (this.#dom.root) {
+          this.#dom.root.removeAttribute("data-floating");
+          this.#dom.root.removeAttribute("data-pill-side");
+          this.#dom.root.style.height = "";
+          this.#dom.root.style.bottom = "";
+        }
+        if (this.#dom.grabberBtn) {
+          this.#dom.grabberBtn.title = "Drag to detach";
+        }
+        this.positionPanel();
+      }
+
       this.updateVerticalBarBounds();
       this.startPositionTracking();
 
@@ -3389,6 +4681,7 @@
       }
 
       if (isNew) {
+        this.setAppLoading(app.id, true);
         try {
           const uri = Services.io.newURI(app.url);
           if (typeof browser.fixupAndLoadURIString === "function") {
@@ -3399,43 +4692,74 @@
         } catch (e) { console.error("[ZentralApps] Failed to load URL:", e); }
       }
 
-      const isTopSlide = this.isCollapsedLayoutMode() && !this.isPlacementVerticalBar();
-      const isFromRight = this.isPanelAttachedToRight();
-      const slideFrom = isTopSlide 
-        ? "translateY(-100%)" 
-        : (isFromRight ? "translateX(100%)" : "translateX(-100%)");
-      this.#dom.panel.style.transition = "none";
-      this.#dom.panel.style.transform  = slideFrom;
-      if (this.#dom.root) {
-        this.#dom.root.removeAttribute("closing");
-        this.#dom.root.setAttribute("open", "true");
-      }
-      this.#dom.panel.getBoundingClientRect(); // Reflow
-
-      requestAnimationFrame(() => {
-        // Bar grows to full height in the very same frame (and duration) the panel starts sliding in.
-        document.documentElement.setAttribute("zentral-vb-expanded", "true");
-        const slideMs = Core.getPref(Constants.Apps.PREF_ANIMATION_SPEED);
-        const animType = Core.getPref(Constants.Apps.PREF_ANIMATION_TYPE);
-        const bezier = this.#getEasingBezier(animType);
-        
-        if (animType === "none") {
-          this.#dom.panel.style.transition = "none";
-        } else {
-          this.#dom.panel.style.transition = `transform ${slideMs}ms ${bezier}`;
+      if (hasSavedFloat) {
+        // Floating: pop-up animation (scale + fade)
+        this.#dom.panel.style.transition = "none";
+        this.#dom.panel.style.transform = "none";
+        if (this.#dom.root) {
+          this.#dom.root.removeAttribute("closing");
+          this.#dom.root.setAttribute("open", "true");
+          document.documentElement.setAttribute("zentral-vb-expanded", "true");
+          const animType = Core.getPref(Constants.Apps.PREF_ANIMATION_TYPE);
+          if (animType !== "none") {
+            this.#dom.root.setAttribute("data-pop-state", "in");
+            this.#setTimeout(() => {
+              if (this.#dom.root?.getAttribute("data-pop-state") === "in") {
+                this.#dom.root.removeAttribute("data-pop-state");
+              }
+            }, 240);
+          }
         }
-        this.#dom.panel.style.transform  = isTopSlide ? "translateY(0)" : "translateX(0)";
-      });
+      } else {
+        // Docked: standard slide animation
+        const isTopSlide = this.isCollapsedLayoutMode() && !this.isPlacementVerticalBar();
+        const isFromRight = this.isPanelAttachedToRight(app);
+        const slideFrom = isTopSlide
+          ? "translateY(-100%)"
+          : (isFromRight ? "translateX(100%)" : "translateX(-100%)");
+        this.#dom.panel.style.transition = "none";
+        this.#dom.panel.style.transform  = slideFrom;
+        if (this.#dom.root) {
+          this.#dom.root.removeAttribute("closing");
+          this.#dom.root.removeAttribute("data-pop-state");
+          this.#dom.root.setAttribute("open", "true");
+        }
+        this.#dom.panel.getBoundingClientRect(); // Reflow
+
+        this.#state.panelAnimationRafId = requestAnimationFrame(() => {
+          this.#state.panelAnimationRafId = null;
+          document.documentElement.setAttribute("zentral-vb-expanded", "true");
+          const slideMs = Core.getPref(Constants.Apps.PREF_ANIMATION_SPEED);
+          const animType = Core.getPref(Constants.Apps.PREF_ANIMATION_TYPE);
+          const bezier = this.#getEasingBezier(animType);
+
+          if (animType === "none") {
+            this.#dom.panel.style.transition = "none";
+          } else {
+            this.#dom.panel.style.transition = `transform ${slideMs}ms ${bezier}`;
+          }
+          this.#dom.panel.style.transform  = isTopSlide ? "translateY(0)" : "translateX(0)";
+        });
+      }
     }
 
     closePanel() {
       Core.log("ZentralApps", "closePanel called");
+      this.#panelGeneration++;
+      this.#cancelPointerGesture();
+      if (this.#state.panelAnimationRafId) {
+        cancelAnimationFrame(this.#state.panelAnimationRafId);
+        this.#state.panelAnimationRafId = null;
+      }
       if (!this.#state.activeAppId && !this.#dom.root?.hasAttribute("open")) return;
       
       if (this.#state.closeTimerId) {
         clearTimeout(this.#state.closeTimerId);
         this.#state.closeTimerId = null;
       }
+
+      const activeApp = this.#state.apps.find(a => a.id === this.#state.activeAppId);
+      const isFloating = this.#state.isFloating;
 
       if (this.#dom.root) {
         this.#dom.root.setAttribute("closing", "true");
@@ -3450,6 +4774,28 @@
           this.#state.panelWidthPx = this.#state.preExpandWidth;
         }
       }
+      if (this.#state.activeAppId) {
+        this.setAppLoading(this.#state.activeAppId, false);
+      }
+
+      // Save sanitized floating rect into session cache before clearing activeAppId
+      if (isFloating && activeApp && this.#dom.root) {
+        const rect = this.#dom.root.getBoundingClientRect();
+        const safeW = Math.max(Constants.Apps.MIN_WIDTH_PX, Math.round(rect.width || 420));
+        const safeH = Math.max(360, Math.round(rect.height || 600));
+        const safeX = Math.round((typeof rect.left === "number" && !isNaN(rect.left)) ? rect.left : 12);
+        const safeY = Math.round((typeof rect.top === "number" && !isNaN(rect.top)) ? rect.top : 12);
+
+        this.#state.floatRects.set(activeApp.id, {
+          x: safeX,
+          y: safeY,
+          w: safeW,
+          h: safeH
+        });
+      }
+
+      const wasAttachedRight = this.isPanelAttachedToRight(activeApp);
+
       this.#state.activeAppId = null;
       this.#state.isPinned = false;
       document.documentElement.removeAttribute("zentral-app-panel-open");
@@ -3464,11 +4810,47 @@
       const tiles = document.querySelectorAll(".zen-app-tile[data-app-id]");
       tiles.forEach(tile => tile.dataset.active = "false");
 
+      if (isFloating) {
+        // Floating: pop-out animation
+        const animType = Core.getPref(Constants.Apps.PREF_ANIMATION_TYPE);
+        if (animType === "none") {
+          if (this.#dom.root) {
+            this.#dom.root.removeAttribute("open");
+            this.#dom.root.removeAttribute("closing");
+            this.#dom.root.removeAttribute("data-pop-state");
+            this.#dom.root.style.pointerEvents = "";
+            this.#dom.root.style.height = "";
+            this.#dom.root.style.bottom = "";
+          }
+          this.#state.isFloating = false;
+          this.stopPositionTracking();
+          return;
+        }
+
+        if (this.#dom.root) {
+          this.#dom.root.setAttribute("data-pop-state", "out");
+        }
+        this.#state.closeTimerId = setTimeout(() => {
+          this.#state.closeTimerId = null;
+          if (this.#dom.root) {
+            this.#dom.root.removeAttribute("open");
+            this.#dom.root.removeAttribute("closing");
+            this.#dom.root.removeAttribute("data-pop-state");
+            this.#dom.root.style.pointerEvents = "";
+            this.#dom.root.style.height = "";
+            this.#dom.root.style.bottom = "";
+          }
+          this.#state.isFloating = false;
+          this.stopPositionTracking();
+        }, 170);
+        return;
+      }
+
+      // Docked slide out
       const isTopSlide = this.isCollapsedLayoutMode() && !this.isPlacementVerticalBar();
-      const isToRight = this.isPanelAttachedToRight();
       const slideTo = isTopSlide 
         ? "translateY(-100%)" 
-        : (isToRight ? "translateX(100%)" : "translateX(-100%)");
+        : (wasAttachedRight ? "translateX(100%)" : "translateX(-100%)");
       
       const slideMs = Core.getPref(Constants.Apps.PREF_ANIMATION_SPEED);
       const animType = Core.getPref(Constants.Apps.PREF_ANIMATION_TYPE);
@@ -3483,6 +4865,8 @@
           this.#dom.root.removeAttribute("open");
           this.#dom.root.removeAttribute("closing");
           this.#dom.root.style.pointerEvents = "";
+          this.#dom.root.style.height = "";
+          this.#dom.root.style.bottom = "";
         }
         this.stopPositionTracking();
         return;
@@ -3493,7 +4877,7 @@
       let unitShift = null;
       try {
         const vb = this.#dom.verticalBar;
-        if (vb && this.isPlacementVerticalBar() && Core.getPref(Constants.Apps.PREF_AUTOHIDE, false) === true) {
+        if (vb && this.isPlacementVerticalBar() && !activeApp?.flipSide && Core.getPref(Constants.Apps.PREF_AUTOHIDE, false) === true) {
           const pr = this.#dom.panel.getBoundingClientRect();
           const br = vb.getBoundingClientRect();
           const margin = 16;
@@ -3531,6 +4915,8 @@
           this.#dom.root.removeAttribute("open");
           this.#dom.root.removeAttribute("closing");
           this.#dom.root.style.pointerEvents = "";
+          this.#dom.root.style.height = "";
+          this.#dom.root.style.bottom = "";
         }
         this.stopPositionTracking();
       }, slideMs + 20);
@@ -3542,6 +4928,7 @@
       if (!app) return;
 
       const isPanelOpen = this.#dom.root?.hasAttribute("open") && this.#state.activeAppId === appId;
+      this.setAppLoading(appId, true);
       const existingBrowser = this.#state.appBrowsers.get(appId);
 
       if (existingBrowser && existingBrowser.isConnected) {
@@ -3598,8 +4985,7 @@
             browser.webNavigation.stop(Ci.nsIWebNavigation.STOP_ALL);
           }
         } catch (_) {}
-        browser.remove();
-        this.#state.appBrowsers.delete(appId);
+        this.#disposeAppBrowser(appId);
       }
       if (!this.#state.appBrowsers || this.#state.appBrowsers.size === 0) {
         this.stopBadgeSyncLoop();
@@ -3765,16 +5151,37 @@
     getOrCreateAppBrowser(app) {
       let b = this.#state.appBrowsers.get(app.id);
       if (b && b.isConnected) return { browser: b, isNew: false };
+      if (b) this.#disposeAppBrowser(app.id);
 
-      const ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:130.0) Gecko/20100101 Firefox/130.0";
+      const ua = this.getUserAgentForApp(app);
       b = document.createXULElement("browser");
       b.setAttribute("type", "content"); b.setAttribute("remote", "true"); b.setAttribute("maychangeremoteness", "true");
       b.setAttribute("nodefaultsrc", "true"); b.setAttribute("messagemanagergroup", "browsers");
       b.setAttribute("usercontextid", "0"); b.setAttribute("customuseragent", ua); b.setAttribute("useragent", ua);
       b.setAttribute("context", "contentAreaContextMenu"); b.setAttribute("flex", "1");
       b.style.cssText = "width: 100%; height: 100%; flex: 1; border: none; overflow: hidden;";
+      b.style.display = "none";
 
+      try { b.customUserAgent = ua; } catch (_) {}
+
+      const zoom = (typeof app.zoom === "number" && !isNaN(app.zoom)) ? app.zoom : 1;
+      if (zoom !== 1) {
+        try { b.fullZoom = zoom; } catch (_) {}
+        try { if (b.browsingContext) b.browsingContext.fullZoom = zoom; } catch (_) {}
+      }
+
+      const appId = app.id;
+      const getCurrentApp = () => this.#state.appBrowsers.get(appId) === b
+        ? this.#state.apps.find(current => current.id === appId) : null;
+      const cleanups = [];
+      const listen = (type, handler) => {
+        b.addEventListener(type, handler);
+        cleanups.push(() => b.removeEventListener(type, handler));
+      };
+      this.#browserCleanups.set(appId, () => { for (const cleanup of cleanups) cleanup(); });
       const checkAndUpdateBadge = () => {
+        const currentApp = getCurrentApp();
+        if (!currentApp) return;
         let title = "";
         try {
           title = b.browsingContext?.currentWindowGlobal?.documentTitle ||
@@ -3784,17 +5191,90 @@
           title = b.contentTitle || b.getAttribute("label") || "";
         }
         const { hasNotification, notifCount } = this.extractBadgeFromTitle(title);
-        if (app.hasNotification !== hasNotification || app.notificationCount !== notifCount) {
-          app.hasNotification = hasNotification;
-          app.notificationCount = notifCount;
-          this.updateAppBadge(app.id, hasNotification, notifCount);
+        if (currentApp.hasNotification !== hasNotification || currentApp.notificationCount !== notifCount) {
+          currentApp.hasNotification = hasNotification;
+          currentApp.notificationCount = notifCount;
+          this.updateAppBadge(appId, hasNotification, notifCount);
         }
       };
 
-      b.addEventListener("pagetitlechanged", checkAndUpdateBadge);
-      b.addEventListener("DOMTitleChanged", checkAndUpdateBadge);
-      b.addEventListener("load", checkAndUpdateBadge);
-      b.addEventListener("pageshow", checkAndUpdateBadge);
+      const handleTitleOrLocation = (newLocationUrl) => {
+        checkAndUpdateBadge();
+        const currentApp = getCurrentApp();
+        if (currentApp && this.#state.activeAppId === appId) {
+          this.syncNavState(currentApp, newLocationUrl);
+        }
+      };
+
+      listen("pagetitlechanged", () => handleTitleOrLocation());
+      listen("DOMTitleChanged", () => handleTitleOrLocation());
+
+      try {
+        const progressListener = {
+          QueryInterface: ChromeUtils.generateQI([
+            "nsIWebProgressListener",
+            "nsISupportsWeakReference"
+          ]),
+          onStateChange: (webProgress, request, stateFlags, status) => {
+            if (!getCurrentApp()) return;
+            const WPL = Ci.nsIWebProgressListener;
+            if (webProgress?.isTopLevel) {
+              if (stateFlags & WPL.STATE_START) {
+                this.setAppLoading(app.id, true);
+              } else if (stateFlags & WPL.STATE_STOP) {
+                this.setAppLoading(app.id, false);
+                checkAndUpdateBadge();
+              }
+            }
+          },
+          onLocationChange: (webProgress, request, location, flags) => {
+            if (!getCurrentApp()) return;
+            if (webProgress?.isTopLevel) {
+              try {
+                if (b.webProgress && !b.webProgress.isLoadingDocument) {
+                  this.setAppLoading(app.id, false);
+                }
+              } catch (_) {}
+              handleTitleOrLocation(location?.spec);
+            }
+          },
+          onProgressChange: () => {},
+          onStatusChange: () => {},
+          onSecurityChange: () => {}
+        };
+
+        if (typeof b.addProgressListener === "function") {
+          b.addProgressListener(
+            progressListener,
+            Ci.nsIWebProgress.NOTIFY_STATE_WINDOW |
+            Ci.nsIWebProgress.NOTIFY_STATE_NETWORK |
+            Ci.nsIWebProgress.NOTIFY_LOCATION
+          );
+          cleanups.push(() => { try { b.removeProgressListener(progressListener); } catch (_) {} });
+        } else if (b.webProgress) {
+          b.webProgress.addProgressListener(
+            progressListener,
+            Ci.nsIWebProgress.NOTIFY_STATE_WINDOW |
+            Ci.nsIWebProgress.NOTIFY_STATE_NETWORK |
+            Ci.nsIWebProgress.NOTIFY_LOCATION
+          );
+          const progress = b.webProgress;
+          cleanups.push(() => { try { progress.removeProgressListener(progressListener); } catch (_) {} });
+        }
+      } catch (err) {
+        console.warn("[ZentralApps] Error attaching progress listener to app browser:", err);
+      }
+
+      listen("load", () => {
+        const currentApp = getCurrentApp();
+        if (!currentApp) return;
+        try { b.fullZoom = currentApp.zoom || 1; } catch (_) {}
+        try { if (b.browsingContext) b.browsingContext.fullZoom = currentApp.zoom || 1; } catch (_) {}
+        this.setAppLoading(appId, false);
+        handleTitleOrLocation();
+      });
+      listen("pageshow", () => { if (getCurrentApp()) this.setAppLoading(appId, false); });
+      listen("DOMContentLoaded", () => { if (getCurrentApp()) this.setAppLoading(appId, false); });
 
       this.#dom.panel.appendChild(b);
       this.#state.appBrowsers.set(app.id, b);
@@ -3802,6 +5282,404 @@
       matchingTiles.forEach(t => t.dataset.loaded = "true");
       this.ensureBadgeSyncLoop();
       return { browser: b, isNew: true };
+    }
+
+    /**
+     * Resolves the appropriate User-Agent string for the specified app (Desktop or Mobile).
+     * @param {Object} app - The app configuration object.
+     * @returns {string} User-Agent header string.
+     */
+    getUserAgentForApp(app) {
+      return app && app.mobile
+        ? "Mozilla/5.0 (Android 14; Mobile; rv:130.0) Gecko/130.0 Firefox/130.0"
+        : "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:130.0) Gecko/20100101 Firefox/130.0";
+    }
+
+    /**
+     * Toggles between desktop and mobile user agent for the specified app.
+     * Overrides browser.customUserAgent and browsingContext.customUserAgent and reloads.
+     * @param {string} appId - Identifier of the active app.
+     */
+    toggleMobileMode(appId) {
+      const app = this.#state.apps.find(a => a.id === appId);
+      if (!app) return;
+      app.mobile = !app.mobile;
+      this.saveApps();
+
+      if (this.#dom.mobileBtn) {
+        this.#dom.mobileBtn.setAttribute("data-active", app.mobile ? "true" : "false");
+        this.#dom.mobileBtn.title = app.mobile ? "Switch to Desktop Mode" : "Switch to Mobile Mode";
+        this.#dom.mobileBtn.replaceChildren(this.#createSVG(app.mobile ? SVG_STRINGS.DESKTOP : SVG_STRINGS.MOBILE));
+      }
+
+      const browser = this.#state.appBrowsers.get(appId);
+      const ua = this.getUserAgentForApp(app);
+      if (browser) {
+        browser.setAttribute("customuseragent", ua);
+        browser.setAttribute("useragent", ua);
+        try { browser.customUserAgent = ua; } catch (_) {}
+        try { if (browser.browsingContext) browser.browsingContext.customUserAgent = ua; } catch (_) {}
+        this.refreshApp(appId);
+      }
+    }
+
+    /**
+     * Applies visibility of the app panel navigation toolbar based on user preferences.
+     */
+    applyNavbarPref() {
+      const showNavbar = Core.getPref(Constants.Apps.PREF_SHOW_NAVBAR, false) === true;
+      if (this.#dom.navbar) {
+        this.#dom.navbar.style.display = showNavbar ? "flex" : "none";
+      }
+      if (this.#dom.root) {
+        this.#dom.root.setAttribute("data-has-navbar", showNavbar ? "true" : "false");
+      }
+    }
+
+    /**
+     * Navigates backward in web history for the active app panel.
+     */
+    navGoBack() {
+      if (!this.#state.activeAppId) return;
+      const browser = this.#state.appBrowsers.get(this.#state.activeAppId);
+      if (!browser) return;
+      try {
+        if (browser.canGoBack && typeof browser.goBack === "function") {
+          browser.goBack();
+        } else if (browser.webNavigation && typeof browser.webNavigation.goBack === "function") {
+          browser.webNavigation.goBack();
+        }
+      } catch (e) {
+        console.warn("[ZentralApps] navGoBack error:", e);
+      }
+      this.#setTimeout(() => this.syncNavState(), 120);
+    }
+
+    /**
+     * Navigates forward in web history for the active app panel.
+     */
+    navGoForward() {
+      if (!this.#state.activeAppId) return;
+      const browser = this.#state.appBrowsers.get(this.#state.activeAppId);
+      if (!browser) return;
+      try {
+        if (browser.canGoForward && typeof browser.goForward === "function") {
+          browser.goForward();
+        } else if (browser.webNavigation && typeof browser.webNavigation.goForward === "function") {
+          browser.webNavigation.goForward();
+        }
+      } catch (e) {
+        console.warn("[ZentralApps] navGoForward error:", e);
+      }
+      this.#setTimeout(() => this.syncNavState(), 120);
+    }
+
+    /**
+     * Determines whether an app browser is currently loading a document or resource.
+     * Checks browser.webProgress.isLoadingDocument and tracked loading state.
+     * @param {string} appId
+     * @returns {boolean}
+     */
+    isAppLoading(appId) {
+      if (!appId) return false;
+      const browser = this.#state.appBrowsers.get(appId);
+      if (browser) {
+        try {
+          if (browser.webProgress && typeof browser.webProgress.isLoadingDocument === "boolean") {
+            const isLoading = browser.webProgress.isLoadingDocument;
+            if (!isLoading && this._loadingAppIds?.has(appId)) {
+              this._loadingAppIds.delete(appId);
+            }
+            return isLoading;
+          }
+          if (browser.browsingContext?.webProgress && typeof browser.browsingContext.webProgress.isLoadingDocument === "boolean") {
+            const isLoading = browser.browsingContext.webProgress.isLoadingDocument;
+            if (!isLoading && this._loadingAppIds?.has(appId)) {
+              this._loadingAppIds.delete(appId);
+            }
+            return isLoading;
+          }
+        } catch (_) {}
+      }
+      return this._loadingAppIds ? this._loadingAppIds.has(appId) : false;
+    }
+
+    /**
+     * Updates loading state for an app and refreshes navigation UI if the app is active.
+     * Includes an automatic safety timeout to prevent stuck loading buttons on SPAs or long streams.
+     * @param {string} appId
+     * @param {boolean} isLoading
+     */
+    setAppLoading(appId, isLoading) {
+      if (!appId) return;
+      if (!this._loadingAppIds) this._loadingAppIds = new Set();
+      if (!this._loadingTimeouts) this._loadingTimeouts = new Map();
+
+      if (this._loadingTimeouts.has(appId)) {
+        clearTimeout(this._loadingTimeouts.get(appId));
+        this._loadingTimeouts.delete(appId);
+      }
+
+      if (isLoading) {
+        this._loadingAppIds.add(appId);
+        // Safety timeout: max 8 seconds of active loading state
+        const timer = setTimeout(() => {
+          this._loadingAppIds.delete(appId);
+          this._loadingTimeouts.delete(appId);
+          if (this.#state.activeAppId === appId) {
+            this.syncNavState();
+          }
+        }, 8000);
+        this._loadingTimeouts.set(appId, timer);
+      } else {
+        this._loadingAppIds.delete(appId);
+      }
+
+      if (this.#state.activeAppId === appId) {
+        this.syncNavState();
+      }
+    }
+
+    /**
+     * Reloads active app webview or stops current loading request.
+     */
+    navReloadOrStop() {
+      if (!this.#state.activeAppId) return;
+      const appId = this.#state.activeAppId;
+      const browser = this.#state.appBrowsers.get(appId);
+      if (!browser) return;
+      if (this.isAppLoading(appId)) {
+        try {
+          if (typeof browser.stop === "function") {
+            browser.stop();
+          } else if (browser.webNavigation && typeof browser.webNavigation.stop === "function") {
+            browser.webNavigation.stop(Ci.nsIWebNavigation.STOP_ALL);
+          }
+        } catch (_) {}
+        this.setAppLoading(appId, false);
+      } else {
+        this.refreshApp(appId);
+      }
+    }
+
+    /**
+     * Updates full zoom factor for the specified app (clamped 30% - 300%).
+     * @param {string} appId - Identifier of target app.
+     * @param {number} zoomVal - Fractional zoom level (e.g. 1.0, 1.2).
+     */
+    setAppZoom(appId, zoomVal) {
+      const app = this.#state.apps.find(a => a.id === appId);
+      if (!app) return;
+      const clamped = Math.max(0.3, Math.min(3.0, Math.round(zoomVal * 100) / 100));
+      app.zoom = clamped;
+      this.saveApps();
+      const browser = this.#state.appBrowsers.get(appId);
+      if (browser) {
+        try { browser.fullZoom = clamped; } catch (_) {}
+        try { if (browser.browsingContext) browser.browsingContext.fullZoom = clamped; } catch (_) {}
+      }
+      if (this.#dom.navZoomLabel) {
+        this.#dom.navZoomLabel.textContent = `${Math.round(clamped * 100)}%`;
+      }
+    }
+
+    /**
+     * Increments or decrements zoom for active app panel.
+     * @param {number} direction - Positive for zoom in (+10%), negative for zoom out (-10%).
+     */
+    navZoomStep(direction) {
+      if (!this.#state.activeAppId) return;
+      const app = this.#state.apps.find(a => a.id === this.#state.activeAppId);
+      if (!app) return;
+      const currentZoom = (typeof app.zoom === "number" && !isNaN(app.zoom)) ? app.zoom : 1;
+      const delta = direction > 0 ? 0.1 : -0.1;
+      this.setAppZoom(this.#state.activeAppId, currentZoom + delta);
+    }
+
+    /**
+     * Resets active app zoom to standard 100%.
+     */
+    navZoomReset() {
+      if (!this.#state.activeAppId) return;
+      this.setAppZoom(this.#state.activeAppId, 1.0);
+    }
+
+    /**
+     * Navigates active app browser to target URL string.
+     * @param {string} url - Target URL.
+     */
+    navigateToUrl(url) {
+      if (!this.#state.activeAppId) return;
+      const appId = this.#state.activeAppId;
+      const browser = this.#state.appBrowsers.get(appId);
+      if (!browser) return;
+      let targetUrl = (url || "").trim();
+      if (!targetUrl) return;
+      if (!/^https?:\/\//i.test(targetUrl) && !/^about:/i.test(targetUrl) && !/^file:\/\//i.test(targetUrl)) {
+        targetUrl = "https://" + targetUrl;
+      }
+      this.setAppLoading(appId, true);
+      try {
+        const uri = Services.io.newURI(targetUrl);
+        if (typeof browser.fixupAndLoadURIString === "function") {
+          browser.fixupAndLoadURIString(targetUrl, { triggeringPrincipal: Services.scriptSecurityManager.createContentPrincipal(uri, {}) });
+        } else if (browser.loadURI) {
+          browser.loadURI(uri, { triggeringPrincipal: Services.scriptSecurityManager.createContentPrincipal(uri, {}) });
+        }
+      } catch (e) {
+        console.error("[ZentralApps] Failed to navigate to URL:", targetUrl, e);
+        this.setAppLoading(appId, false);
+      }
+    }
+
+    /**
+     * Keyboard handler for navbar URL input (Enter = navigate, Escape = cancel).
+     * @param {KeyboardEvent} e
+     */
+    handleNavUrlKeyDown(e) {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        e.stopPropagation();
+        this.navigateToUrl(this.#dom.navUrlInput?.value);
+        this.#dom.navUrlInput?.blur();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        this.syncNavState();
+        this.#dom.navUrlInput?.blur();
+      }
+    }
+
+    /**
+     * Normalizes a URL string for robust comparison, ignoring trailing slashes,
+     * case differences in host, and transient/tracking query parameters that websites
+     * append or strip dynamically.
+     * @param {string} urlString
+     * @returns {string}
+     */
+    normalizeUrlForComparison(urlString) {
+      if (!urlString || typeof urlString !== "string") return "";
+      try {
+        const u = new URL(urlString.trim());
+        const searchParams = new URLSearchParams(u.search);
+        const trackingKeys = [
+          "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content",
+          "ext-referrer", "screen_view_count", "ref", "fbclid", "gclid"
+        ];
+        for (const key of trackingKeys) {
+          searchParams.delete(key);
+        }
+        const cleanSearch = searchParams.toString();
+        const cleanPath = (u.pathname || "/").replace(/\/+$/, "") || "/";
+        return `${u.protocol}//${u.host.toLowerCase()}${cleanPath}${cleanSearch ? "?" + cleanSearch : ""}${u.hash}`;
+      } catch (_) {
+        return urlString.trim().replace(/\/+$/, "").toLowerCase();
+      }
+    }
+
+    /**
+     * Checks if two URLs refer to the same destination.
+     * @param {string} u1
+     * @param {string} u2
+     * @returns {boolean}
+     */
+    areUrlsEquivalent(u1, u2) {
+      if (!u1 || !u2) return u1 === u2;
+      return this.normalizeUrlForComparison(u1) === this.normalizeUrlForComparison(u2);
+    }
+
+    /**
+     * Syncs visible state of the "Update App" button when URL input differs from saved URL.
+     */
+    syncNavUpdateBtnState() {
+      if (!this.#dom.navUpdateBtn || !this.#dom.navUrlInput || !this.#state.activeAppId) return;
+      const app = this.#state.apps.find(a => a.id === this.#state.activeAppId);
+      if (!app) return;
+      const currentInput = this.#dom.navUrlInput.value.trim();
+      const isDifferent = !!(currentInput && !this.areUrlsEquivalent(currentInput, app.url));
+      this.#dom.navUpdateBtn.setAttribute("data-visible", isDifferent ? "true" : "false");
+    }
+
+    /**
+     * Persists the currently typed URL in the navbar as the app's default URL.
+     */
+    navUpdateAppUrl() {
+      if (!this.#state.activeAppId) return;
+      const app = this.#state.apps.find(a => a.id === this.#state.activeAppId);
+      if (!app) return;
+      let newUrl = (this.#dom.navUrlInput?.value || "").trim();
+      if (!newUrl) return;
+      if (!/^https?:\/\//i.test(newUrl) && !/^about:/i.test(newUrl) && !/^file:\/\//i.test(newUrl)) {
+        newUrl = "https://" + newUrl;
+      }
+      try { newUrl = new URL(newUrl).href; } catch (_) { return; }
+      if (this.areUrlsEquivalent(newUrl, app.url)) return;
+      app.url = newUrl;
+      this.#dom.navUrlInput.value = newUrl;
+      this.saveApps();
+      this.renderGrid();
+      this.syncNavUpdateBtnState();
+      if (this.#dom.navUpdateBtn) {
+        const orig = this.#dom.navUpdateBtn.textContent;
+        this.#dom.navUpdateBtn.textContent = "Saved!";
+        this.#setTimeout(() => {
+          if (this.#dom.navUpdateBtn) {
+            this.#dom.navUpdateBtn.textContent = orig;
+            this.syncNavUpdateBtnState();
+          }
+        }, 1200);
+      }
+    }
+
+    /**
+     * Synchronizes navigation bar buttons (back/forward enabled, reload/stop icon, URL input).
+     * @param {Object} [targetApp] - Optional app record.
+     * @param {string} [newLocationUrl] - Optional URL from onLocationChange.
+     */
+    syncNavState(targetApp, newLocationUrl) {
+      if (!this.#state.activeAppId) return;
+      const app = targetApp || this.#state.apps.find(a => a.id === this.#state.activeAppId);
+      if (!app) return;
+      const browser = this.#state.appBrowsers.get(app.id);
+      if (!browser) return;
+
+      if (this.#dom.navBackBtn) {
+        let canBack = false;
+        try {
+          canBack = !!(browser.canGoBack || browser.webNavigation?.canGoBack);
+        } catch (_) {}
+        this.#dom.navBackBtn.disabled = !canBack;
+      }
+      if (this.#dom.navForwardBtn) {
+        let canForward = false;
+        try {
+          canForward = !!(browser.canGoForward || browser.webNavigation?.canGoForward);
+        } catch (_) {}
+        this.#dom.navForwardBtn.disabled = !canForward;
+      }
+
+      if (this.#dom.navReloadBtn) {
+        const isLoading = this.isAppLoading(app.id);
+        this.#dom.navReloadBtn.replaceChildren(
+          this.#createSVG(isLoading ? SVG_STRINGS.NAV_STOP : SVG_STRINGS.REFRESH)
+        );
+        this.#dom.navReloadBtn.title = isLoading ? "Stop loading" : "Reload";
+      }
+
+      if (this.#dom.navUrlInput && document.activeElement !== this.#dom.navUrlInput) {
+        let url = newLocationUrl || "";
+        if (!url) {
+          try {
+            url = browser.currentURI?.spec || browser.browsingContext?.currentURI?.spec || "";
+          } catch (_) {}
+        }
+        if (!url || url === "about:blank") {
+          url = app.url || "";
+        }
+        this.#dom.navUrlInput.value = url;
+      }
+
+      this.syncNavUpdateBtnState();
     }
 
     startPositionTracking() {
@@ -3830,6 +5708,7 @@
         } else {
           rafId = null;
         }
+        this._positionTrackingRafId = rafId;
       };
 
       const triggerBurst = () => {
@@ -3837,6 +5716,7 @@
         lastActivityTime = Date.now();
         if (!rafId) {
           rafId = requestAnimationFrame(rafLoop);
+          this._positionTrackingRafId = rafId;
         }
       };
 
@@ -3861,7 +5741,7 @@
         reposition();
       });
       const idsToObserve = [
-        "sidebar-box", "sidebar-container", "vertical-tabs", 
+        "sidebar-box", "sidebar-container", "vertical-tabs",
         "navigator-toolbox", "zen-appcontent-navbar-wrapper",
         "nav-bar", "TabsToolbar", "titlebar", "zen-window-controls",
         "titlebar-buttonbox-container", "zen-appcontent-wrapper"
@@ -3896,7 +5776,11 @@
 
     stopPositionTracking() {
       this._isTrackingPosition = false;
-      
+      if (this._positionTrackingRafId) {
+        cancelAnimationFrame(this._positionTrackingRafId);
+        this._positionTrackingRafId = null;
+      }
+
       if (this._sidebarResizeObserver) {
         this._sidebarResizeObserver.disconnect();
         this._sidebarResizeObserver = null;
@@ -3933,6 +5817,8 @@
     positionPanel() {
       const root = this.#dom.root;
       if (!root || !gBrowser?.tabContainer) return;
+      if (this.#state.isFloating) return;
+      root.style.height = "";
       const tcRect = gBrowser.tabContainer.getBoundingClientRect();
       const gap = 12;
 
@@ -3972,12 +5858,19 @@
           panelRight = panelLeft + panelWidth;
         }
       } else {
-        if (this.isPanelAttachedToRight()) {
-          targetRight = Math.max(gap, Math.round(window.innerWidth - sidebarRect.left) + sideGap);
+        const isSbRight = this.isSidebarRight();
+        const isPanelRight = this.isPanelAttachedToRight();
+
+        if (isPanelRight) {
+          targetRight = isSbRight
+            ? Math.max(gap, Math.round(window.innerWidth - sidebarRect.left) + sideGap)
+            : gap;
           panelRight = window.innerWidth - targetRight;
           panelLeft = panelRight - panelWidth;
         } else {
-          targetLeft = Math.max(gap, Math.round(sidebarRect.right) + sideGap);
+          targetLeft = isSbRight
+            ? gap
+            : Math.max(gap, Math.round(sidebarRect.right) + sideGap);
           panelLeft = targetLeft;
           panelRight = panelLeft + panelWidth;
         }
@@ -4010,8 +5903,24 @@
         top = Math.max(gap, Math.round(maxBottom));
       } catch(e) {}
 
+      const activeApp = this.#state.apps.find(app => app.id === this.#state.activeAppId);
+      if (activeApp?.flipSide) {
+        const { contentRect, vbRect, topInset } = this.getContentAreaGeometry();
+        const slot = this.#geo.getDockSlots({
+          contentRect, sidebarRect, vbRect, topInset,
+          isSidebarRight: this.isSidebarRight(),
+          isPlacementVerticalBar: this.isPlacementVerticalBar(),
+          isSidebarCollapsed: isCollapsed,
+          isVbRevealed: this.#dom.verticalBar?.hasAttribute("data-revealed") ?? true,
+          panelWidth, windowWidth: window.innerWidth, windowHeight: window.innerHeight
+        }).opposite;
+        targetLeft = slot.x;
+        targetRight = window.innerWidth - slot.x - slot.w;
+      }
+
       root.style.top = top + "px";
       root.style.bottom = gap + "px";
+      root.style.height = "";
 
       if (this.isPanelAttachedToRight()) {
         root.style.left = "auto";
@@ -4234,11 +6143,14 @@
       }
     }
 
-    toggleExpand() {
-      Core.log("ZentralApps", "toggleExpand - current isExpanded:", this.#state.isExpanded);
+    async toggleExpand() {
+      Core.log("ZentralApps", "toggleExpand - current isExpanded:", this.#state.isExpanded, "isFloating:", this.#state.isFloating);
+      if (this.#state.isFloating) {
+        if (!await this.redockPanel("sidebar")) return;
+      }
       if (!this.#state.isExpanded) {
         this.#state.preExpandWidth = this.#state.panelWidthPx || this.loadWidth();
-        
+
         const gap = 12;
         let fullWidth = window.innerWidth - (gap * 2);
         if (this.isPlacementVerticalBar()) {
@@ -4248,7 +6160,7 @@
           fullWidth = window.innerWidth - vbWidth - (gap * 2);
         } else if (gBrowser?.tabContainer) {
           const tcRect = gBrowser.tabContainer.getBoundingClientRect();
-          if (this.isPanelAttachedToRight()) {
+          if (this.isSidebarRight()) {
             const targetRight = Math.max(gap, Math.round(window.innerWidth - tcRect.left) + gap);
             fullWidth = window.innerWidth - targetRight - gap;
           } else {
@@ -4282,7 +6194,7 @@
       e.preventDefault();
       this._startX = e.clientX;
       const app = this.#state.apps.find(a => a.id === this.#state.activeAppId);
-      this._startW = app?.width || this.loadWidth();
+      this._startW = this.#state.panelWidthPx || app?.width || this.loadWidth();
       if (this.#dom.panel) this.#dom.panel.style.pointerEvents = "none";
       document.addEventListener("mousemove", this.onDrag);
       document.addEventListener("mouseup", this.onStopDrag);
@@ -4307,6 +6219,589 @@
       document.removeEventListener("mouseup", this.onStopDrag);
       if (this.#dom.panel) this.#dom.panel.style.pointerEvents = "";
       this.saveWidth(this.#state.panelWidthPx);
+    }
+
+    /**
+     * Retrieves current geometry bounds for content area and sidebar anchors.
+     * @returns {{
+     *   contentRect: {left: number, right: number, top: number, bottom: number, width: number, height: number},
+     *   bounds: {left: number, top: number, width: number, height: number},
+     *   sidebarRect: {left: number, right: number, width: number, height: number},
+     *   vbRect: {left: number, right: number, width: number, height: number},
+     *   topInset: number
+     * }}
+     */
+    getContentAreaGeometry() {
+      const gap = 12;
+      let top = gap;
+      try {
+        let maxBottom = 0;
+        const contentBox = document.getElementById("tabbrowser-tabbox") ||
+                           document.getElementById("tabbrowser-tabpanels") ||
+                           gBrowser?.selectedBrowser ||
+                           document.getElementById("appcontent");
+        if (contentBox) {
+          const cRect = contentBox.getBoundingClientRect();
+          if (cRect.top > 0 && cRect.top < 200) {
+            maxBottom = Math.max(maxBottom, cRect.top);
+          }
+        }
+        const floatingNavbar = document.getElementById("zen-appcontent-navbar-wrapper");
+        if (floatingNavbar) {
+          const cs = window.getComputedStyle(floatingNavbar);
+          if (cs.display !== "none" && cs.visibility !== "hidden" && parseFloat(cs.opacity || "1") > 0.1) {
+            const navRect = floatingNavbar.getBoundingClientRect();
+            if (navRect.height > 0 && navRect.bottom > 0 && navRect.bottom < 200) {
+              maxBottom = Math.max(maxBottom, navRect.bottom);
+            }
+          }
+        }
+        top = Math.max(gap, Math.round(maxBottom));
+      } catch (_) {}
+
+      const tcRect = gBrowser?.tabContainer ? gBrowser.tabContainer.getBoundingClientRect() : { left: 0, right: 0, width: 0, height: window.innerHeight };
+      let sidebarRect = tcRect;
+      const sidebarEl = document.getElementById("sidebar-box") ||
+                        document.getElementById("sidebar-container") ||
+                        document.getElementById("vertical-tabs");
+      if (sidebarEl) {
+        const sRect = sidebarEl.getBoundingClientRect();
+        if (sRect.width > 0 && sRect.height > 0) {
+          sidebarRect = sRect;
+        }
+      }
+
+      const vb = this.#dom.verticalBar;
+      const vbRect = vb ? vb.getBoundingClientRect() : { left: 0, right: 0, width: 0, height: window.innerHeight };
+
+      const bounds = {
+        left: gap,
+        top,
+        width: Math.max(320, window.innerWidth - (gap * 2)),
+        height: Math.max(200, window.innerHeight - top - gap)
+      };
+
+      const contentRect = {
+        left: gap,
+        right: window.innerWidth - gap,
+        top,
+        bottom: window.innerHeight - gap,
+        width: bounds.width,
+        height: bounds.height
+      };
+
+      return { contentRect, bounds, sidebarRect, vbRect, topInset: top };
+    }
+
+    /**
+     * Begins pointer gesture on panel pill grabber ("Drag to detach" / drag floating panel).
+     * @param {PointerEvent} e
+     */
+    beginDetachGesture(e) {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+
+      const root = this.#dom.root;
+      if (!root) return;
+      this.#cancelPointerGesture();
+
+      const rect = root.getBoundingClientRect();
+      const pointerStartX = e.clientX;
+      const pointerStartY = e.clientY;
+      const offsetX = pointerStartX - rect.left;
+      const offsetY = pointerStartY - rect.top;
+
+      const safeW = Math.max(Constants.Apps.MIN_WIDTH_PX, Math.round(rect.width || this.#state.panelWidthPx || 420));
+      const safeH = Math.max(360, Math.round(this.#state.isFloating ? (rect.height || 600) : ((rect.height || window.innerHeight - 24) - 32)));
+      const currentPillSide = root.getAttribute("data-pill-side") || (this.isPanelAttachedToRight() ? "left" : "right");
+
+      this.#state.floatDrag = {
+        pointerStartX,
+        pointerStartY,
+        offsetX,
+        offsetY,
+        currentW: safeW,
+        currentH: safeH,
+        lockedPillSide: currentPillSide,
+        hasDetached: this.#state.isFloating,
+        startRect: {
+          x: rect.left,
+          y: rect.top,
+          w: rect.width,
+          h: rect.height,
+          left: rect.left,
+          top: rect.top,
+          width: rect.width,
+          height: rect.height
+        }
+      };
+
+      if (this.#dom.dragShield) {
+        this.#dom.dragShield.setAttribute("data-active", "true");
+      }
+
+      window.addEventListener("pointermove", this.onFloatDrag);
+      window.addEventListener("pointerup", this.onFloatDrop);
+      window.addEventListener("pointercancel", this.onFloatDrop);
+    }
+
+    /**
+     * Detaches docked panel, shrinking it vertically and entering floating mode.
+     * @param {Object} [currentRect]
+     * @param {boolean} [isDragGesture=false] - True if triggered during active drag (skips transition lag)
+     */
+    detachPanel(currentRect, isDragGesture = false) {
+      const root = this.#dom.root;
+      if (!root) return;
+
+      Core.log("ZentralApps", "detachPanel: converting panel to floating state");
+      this.#state.isFloating = true;
+      this.#state.prePinned = this.#state.isPinned;
+      this.#state.isPinned = true;
+
+      if (this.#dom.grabberBtn) {
+        this.#dom.grabberBtn.title = "Drag to move";
+      }
+
+      // Ensure panel is unexpanded before detaching
+      if (this.#state.isExpanded) {
+        this.#state.isExpanded = false;
+        if (this.#dom.expandBtn) {
+          this.#dom.expandBtn.title = "Expand panel";
+          this.#dom.expandBtn.replaceChildren(this.#createSVG(SVG_STRINGS.EXPAND));
+        }
+      }
+
+      const baseRect = currentRect || root.getBoundingClientRect();
+      const { bounds } = this.getContentAreaGeometry();
+      const app = this.#state.apps.find(a => a.id === this.#state.activeAppId);
+
+      const rawLeft = (typeof baseRect?.left === "number" && !isNaN(baseRect.left))
+        ? baseRect.left
+        : ((typeof baseRect?.x === "number" && !isNaN(baseRect.x)) ? baseRect.x : bounds.left);
+
+      const rawTop = (typeof baseRect?.top === "number" && !isNaN(baseRect.top))
+        ? baseRect.top
+        : ((typeof baseRect?.y === "number" && !isNaN(baseRect.y)) ? baseRect.y : bounds.top);
+
+      const rawWidth = (typeof baseRect?.width === "number" && !isNaN(baseRect.width) && baseRect.width > 0)
+        ? baseRect.width
+        : ((typeof baseRect?.w === "number" && !isNaN(baseRect.w) && baseRect.w > 0) ? baseRect.w : (app?.width || this.#state.panelWidthPx || 420));
+
+      const rawHeight = (typeof baseRect?.height === "number" && !isNaN(baseRect.height) && baseRect.height > 0)
+        ? baseRect.height
+        : ((typeof baseRect?.h === "number" && !isNaN(baseRect.h) && baseRect.h > 0) ? baseRect.h : (bounds.height || window.innerHeight - 48));
+
+      const preservedWidth = Math.max(Constants.Apps.MIN_WIDTH_PX, Math.round(rawWidth));
+
+      // Shrink by 16px vertically top & bottom when detaching
+      const shrinkInsetY = 16;
+      let newY = Math.round(rawTop + shrinkInsetY);
+      let newH = Math.max(360, Math.round(rawHeight - (shrinkInsetY * 2)));
+      let newW = preservedWidth;
+      let newX = Math.round(rawLeft);
+
+      const Geo = this.#geo;
+      const clamped = Geo.clampRect({ x: newX, y: newY, w: newW, h: newH }, bounds, { minW: 320, minH: 360 }, { allowOverflow: true, minVisibleMargin: 80 });
+
+      // Apply inline geometry synchronously without transition lag
+      root.style.transform = "none";
+      root.style.transition = "none";
+      root.style.left = clamped.x + "px";
+      root.style.top = clamped.y + "px";
+      root.style.width = clamped.w + "px";
+      root.style.height = clamped.h + "px";
+      root.style.right = "auto";
+      root.style.bottom = "auto";
+
+      root.removeAttribute("data-panel-side");
+      root.setAttribute("data-floating", "true");
+
+      if (this.#dom.panel) {
+        this.#dom.panel.style.transition = "none";
+        this.#dom.panel.style.transform = "none";
+      }
+
+      if (this.#state.floatDrag) {
+        this.#state.floatDrag.currentW = clamped.w;
+        this.#state.floatDrag.currentH = clamped.h;
+        this.#state.floatDrag.offsetY = Math.max(0, this.#state.floatDrag.offsetY - shrinkInsetY);
+      }
+
+      if (!isDragGesture) {
+        root.setAttribute("data-animating", "true");
+        this.#setTimeout(() => {
+          if (root) root.removeAttribute("data-animating");
+        }, 260);
+      } else {
+        root.removeAttribute("data-animating");
+      }
+
+      const preferredSide = this.#state.floatDrag?.lockedPillSide ||
+                            (this.isPanelAttachedToRight(app) ? "left" : "right");
+      const pillSide = Geo ? Geo.pickPillSide(clamped, bounds, 44, preferredSide) : preferredSide;
+      root.setAttribute("data-pill-side", pillSide);
+      if (this.#state.floatDrag) {
+        this.#state.floatDrag.lockedPillSide = pillSide;
+      }
+
+      if (this.#dom.pinBtn) {
+        this.#dom.pinBtn.setAttribute("data-pinned", "true");
+        this.#dom.pinBtn.title = "Pinned (Floating)";
+      }
+
+      if (this.#state.activeAppId) {
+        this.#state.floatRects.set(this.#state.activeAppId, clamped);
+      }
+    }
+
+    /**
+     * Handles active pointer movement during floating drag gesture.
+     * @param {PointerEvent} e
+     */
+    onFloatDrag(e) {
+      const drag = this.#state.floatDrag;
+      if (!drag) return;
+
+      const delta = Math.hypot(e.clientX - drag.pointerStartX, e.clientY - drag.pointerStartY);
+      if (!drag.hasDetached) {
+        if (delta < 5) return;
+        this.detachPanel(drag.startRect, true);
+        drag.hasDetached = true;
+      }
+
+      const root = this.#dom.root;
+      if (!root) return;
+
+      const Geo = this.#geo;
+      const { contentRect, bounds, sidebarRect, vbRect, topInset } = this.getContentAreaGeometry();
+
+      const rect = root.getBoundingClientRect();
+      const curW = drag.currentW || Math.max(Constants.Apps.MIN_WIDTH_PX, Math.round(rect.width || 420));
+      const curH = drag.currentH || Math.max(360, Math.round(rect.height || 600));
+
+      const rawX = e.clientX - drag.offsetX;
+      const rawY = e.clientY - drag.offsetY;
+
+      // Allow panel to be moved partially off-screen like standard OS windows
+      const clamped = Geo.clampRect({ x: rawX, y: rawY, w: curW, h: curH }, bounds, { minW: 320, minH: 360 }, { allowOverflow: true, minVisibleMargin: 80 });
+
+      root.style.left = clamped.x + "px";
+      root.style.top = clamped.y + "px";
+      root.style.width = clamped.w + "px";
+      root.style.height = clamped.h + "px";
+      root.style.right = "auto";
+      root.style.bottom = "auto";
+
+      // CRITICAL: Keep pill locked to its initial side during active dragging to prevent flickering
+      if (drag.lockedPillSide) {
+        root.setAttribute("data-pill-side", drag.lockedPillSide);
+      }
+
+      // Compute precise dock slots and hit-test edge snap zones
+      const isCollapsed = this.isCollapsedSidebar() || (sidebarRect.width > 0 && sidebarRect.width <= Constants.Apps.COLLAPSED_WIDTH_THRESHOLD);
+      const isVbRevealed = this.#dom.verticalBar?.hasAttribute("data-revealed") ?? true;
+      const app = this.#state.apps.find(a => a.id === this.#state.activeAppId);
+      const appWidth = app?.width || this.loadWidth();
+
+      const slots = Geo.getDockSlots({
+        contentRect,
+        sidebarRect,
+        vbRect,
+        isSidebarRight: this.isSidebarRight(),
+        isPlacementVerticalBar: this.isPlacementVerticalBar(),
+        isSidebarCollapsed: isCollapsed,
+        isVbRevealed,
+        gap: 12,
+        collapsedGap: 7,
+        panelWidth: appWidth,
+        topInset,
+        windowWidth: window.innerWidth,
+        windowHeight: window.innerHeight
+      });
+
+      const snapHit = slots ? Geo.hitTestSnapZone({ pointerX: e.clientX, panelRect: clamped }, slots, 100) : null;
+      if (drag.activeSnapHit !== snapHit) {
+        Core.log("ZentralApps", "onFloatDrag: snap state changed ->", snapHit);
+      }
+      drag.activeSnapHit = snapHit;
+
+      if (snapHit && slots) {
+        const targetSlot = (snapHit === "sidebar") ? slots.sidebar : slots.opposite;
+        if (targetSlot && this.#dom.dockGhost) {
+          const ghost = this.#dom.dockGhost;
+          ghost.style.left = targetSlot.x + "px";
+          ghost.style.top = targetSlot.y + "px";
+          ghost.style.width = targetSlot.w + "px";
+          ghost.style.height = targetSlot.h + "px";
+          ghost.setAttribute("data-active", "true");
+        }
+      } else {
+        if (this.#dom.dockGhost) {
+          this.#dom.dockGhost.removeAttribute("data-active");
+        }
+      }
+
+      if (this.#state.activeAppId) {
+        this.#state.floatRects.set(this.#state.activeAppId, {
+          x: clamped.x,
+          y: clamped.y,
+          w: clamped.w,
+          h: clamped.h
+        });
+      }
+    }
+
+    /**
+     * Concludes floating drag gesture, snapping to dock or saving floating position.
+     * @param {PointerEvent} e
+     */
+    onFloatDrop(e) {
+      window.removeEventListener("pointermove", this.onFloatDrag);
+      window.removeEventListener("pointerup", this.onFloatDrop);
+      window.removeEventListener("pointercancel", this.onFloatDrop);
+
+      if (this.#dom.dragShield) {
+        this.#dom.dragShield.removeAttribute("data-active");
+      }
+      if (this.#dom.dockGhost) {
+        this.#dom.dockGhost.removeAttribute("data-active");
+      }
+
+      const drag = this.#state.floatDrag;
+      this.#state.floatDrag = null;
+      if (!drag) return;
+
+      if (!drag.hasDetached && !this.#state.isFloating) {
+        // User clicked the grabber button without dragging -> detach in-place cleanly
+        this.detachPanel(drag.startRect, false);
+        return;
+      }
+
+      const Geo = this.#geo;
+      const { contentRect, bounds, sidebarRect, vbRect, topInset } = this.getContentAreaGeometry();
+      const isCollapsed = this.isCollapsedSidebar() || (sidebarRect.width > 0 && sidebarRect.width <= Constants.Apps.COLLAPSED_WIDTH_THRESHOLD);
+      const isVbRevealed = this.#dom.verticalBar?.hasAttribute("data-revealed") ?? true;
+      const app = this.#state.apps.find(a => a.id === this.#state.activeAppId);
+      const appWidth = app?.width || this.loadWidth();
+
+      const slots = Geo.getDockSlots({
+        contentRect,
+        sidebarRect,
+        vbRect,
+        isSidebarRight: this.isSidebarRight(),
+        isPlacementVerticalBar: this.isPlacementVerticalBar(),
+        isSidebarCollapsed: isCollapsed,
+        isVbRevealed,
+        gap: 12,
+        collapsedGap: 7,
+        panelWidth: appWidth,
+        topInset,
+        windowWidth: window.innerWidth,
+        windowHeight: window.innerHeight
+      });
+
+      const currentRect = this.#dom.root ? this.#dom.root.getBoundingClientRect() : null;
+      const dropSnapHit = drag.activeSnapHit || (slots ? Geo.hitTestSnapZone({
+        pointerX: e.clientX,
+        panelRect: currentRect ? { x: currentRect.left, y: currentRect.top, w: currentRect.width, h: currentRect.height } : null
+      }, slots, 120) : null);
+
+      Core.log("ZentralApps", "onFloatDrop: activeSnapHit =", drag.activeSnapHit, "dropSnapHit =", dropSnapHit);
+
+      if (dropSnapHit) {
+        this.redockPanel(dropSnapHit);
+      } else if (this.#state.isFloating && this.#dom.root) {
+        const rect = this.#dom.root.getBoundingClientRect();
+        const safeW = Math.max(Constants.Apps.MIN_WIDTH_PX, Math.round(rect.width || drag.currentW || 420));
+        const safeH = Math.max(360, Math.round(rect.height || drag.currentH || 600));
+        const safeX = Math.round((typeof rect.left === "number" && !isNaN(rect.left)) ? rect.left : 12);
+        const safeY = Math.round((typeof rect.top === "number" && !isNaN(rect.top)) ? rect.top : 12);
+
+        // Drag is complete: if panel is resting near an edge or partially off-screen, ensure pill is on visible side
+        if (Geo && bounds) {
+          const finalSide = Geo.pickPillSide({ x: safeX, w: safeW }, bounds, 44, drag.lockedPillSide || "right");
+          this.#dom.root.setAttribute("data-pill-side", finalSide);
+        }
+
+        if (this.#state.activeAppId) {
+          this.#state.floatRects.set(this.#state.activeAppId, {
+            x: safeX,
+            y: safeY,
+            w: safeW,
+            h: safeH
+          });
+        }
+      }
+    }
+
+    /**
+     * Re-docks a floating panel into a docked edge slot ('sidebar' or 'opposite').
+     * @param {'sidebar'|'opposite'} dockTargetSide
+     */
+    async redockPanel(dockTargetSide = "sidebar") {
+      const root = this.#dom.root;
+      if (!root || !this.#state.activeAppId) return false;
+      const generation = ++this.#panelGeneration;
+      const activeAppId = this.#state.activeAppId;
+      this.#cancelPointerGesture();
+
+      Core.log("ZentralApps", "redockPanel: docking panel to:", dockTargetSide);
+      if (this.#dom.dockGhost) {
+        this.#dom.dockGhost.removeAttribute("data-active");
+      }
+      const Geo = this.#geo;
+      const { contentRect, sidebarRect, vbRect, topInset } = this.getContentAreaGeometry();
+      const isCollapsed = this.isCollapsedSidebar() || (sidebarRect.width > 0 && sidebarRect.width <= Constants.Apps.COLLAPSED_WIDTH_THRESHOLD);
+      const isVbRevealed = this.#dom.verticalBar?.hasAttribute("data-revealed") ?? true;
+      const app = this.#state.apps.find(a => a.id === this.#state.activeAppId);
+      const appWidth = app?.width || this.loadWidth();
+
+      const slots = Geo ? Geo.getDockSlots({
+        contentRect,
+        sidebarRect,
+        vbRect,
+        isSidebarRight: this.isSidebarRight(),
+        isPlacementVerticalBar: this.isPlacementVerticalBar(),
+        isSidebarCollapsed: isCollapsed,
+        isVbRevealed,
+        gap: 12,
+        collapsedGap: 7,
+        panelWidth: appWidth,
+        topInset,
+        windowWidth: window.innerWidth,
+        windowHeight: window.innerHeight
+      }) : null;
+
+      const targetSlot = (dockTargetSide === "sidebar") ? slots?.sidebar : slots?.opposite;
+
+      if (targetSlot) {
+        root.setAttribute("data-animating", "true");
+        root.style.left = targetSlot.x + "px";
+        root.style.top = targetSlot.y + "px";
+        root.style.width = targetSlot.w + "px";
+        root.style.height = targetSlot.h + "px";
+        if (!await this.#waitForPanel(250)) return false;
+      }
+      if (generation !== this.#panelGeneration || root !== this.#dom.root || activeAppId !== this.#state.activeAppId) return false;
+
+      root.removeAttribute("data-animating");
+      root.removeAttribute("data-floating");
+      root.removeAttribute("data-pill-side");
+      root.style.left = "";
+      root.style.top = "";
+      root.style.width = "";
+      root.style.height = "";
+      root.style.right = "";
+      root.style.bottom = "";
+
+      this.#state.isFloating = false;
+      this.#state.isPinned = this.#state.prePinned ?? false;
+
+      // Persist per-app side flip if opposite dock side was chosen
+      if (app) {
+        const isOpposite = (dockTargetSide === "opposite");
+        app.flipSide = isOpposite;
+        this.saveApps();
+        this.#state.floatRects.delete(app.id);
+      }
+
+      if (this.#dom.grabberBtn) {
+        this.#dom.grabberBtn.title = "Drag to detach";
+      }
+
+      if (this.#dom.pinBtn) {
+        this.#dom.pinBtn.setAttribute("data-pinned", this.#state.isPinned ? "true" : "false");
+        this.#dom.pinBtn.title = this.#state.isPinned ? "Unpin panel" : "Pin panel";
+      }
+
+      this.updateWidthVar(appWidth);
+      this.positionPanel();
+      return true;
+    }
+
+    /**
+     * Initiates edge or corner resizing for a floating panel.
+     * @param {string} dir - Handle direction ('n','s','e','w','ne','nw','se','sw')
+     * @param {PointerEvent} e
+     */
+    startFloatResize(dir, e) {
+      if (e.button !== 0 || !this.#state.isFloating) return;
+      e.preventDefault();
+      e.stopPropagation();
+
+      const root = this.#dom.root;
+      if (!root) return;
+      this.#cancelPointerGesture();
+      root.removeAttribute("data-animating");
+      root.style.transition = "none";
+
+      const rect = root.getBoundingClientRect();
+      const startRect = { x: rect.left, y: rect.top, w: rect.width, h: rect.height };
+      const startX = e.clientX;
+      const startY = e.clientY;
+
+      if (this.#dom.dragShield) {
+        this.#dom.dragShield.setAttribute("data-active", "true");
+      }
+
+      const Geo = this.#geo;
+      const { bounds } = this.getContentAreaGeometry();
+
+      const onPointerMove = (ev) => {
+        const dx = ev.clientX - startX;
+        const dy = ev.clientY - startY;
+
+        const newRect = Geo ? Geo.computeResize(dir, startRect, dx, dy, { minW: 320, minH: 360 }, bounds)
+                            : { x: startRect.x, y: startRect.y, w: Math.max(320, startRect.w + dx), h: Math.max(360, startRect.h + dy) };
+
+        root.style.left = newRect.x + "px";
+        root.style.top = newRect.y + "px";
+        root.style.width = newRect.w + "px";
+        root.style.height = newRect.h + "px";
+
+        if (this.#state.activeAppId) {
+          this.#state.floatRects.set(this.#state.activeAppId, newRect);
+        }
+      };
+
+      const onPointerUp = () => {
+        this.#cancelPointerGesture();
+
+        if (this.#dom.dragShield) {
+          this.#dom.dragShield.removeAttribute("data-active");
+        }
+
+        const app = this.#state.apps.find(a => a.id === this.#state.activeAppId);
+        if (app && this.#dom.root) {
+          const r = this.#dom.root.getBoundingClientRect();
+          const finalW = Math.round(r.width);
+          const finalH = Math.round(r.height);
+          if (finalW >= Constants.Apps.MIN_WIDTH_PX) {
+            app.width = finalW;
+            this.saveApps();
+            this.updateWidthVar(finalW);
+          }
+          Core.log("ZentralApps", "startFloatResize: resize completed ->", finalW, "x", finalH);
+        }
+
+        if (this.#state.isFloating && this.#dom.root && Geo && bounds) {
+          const r = this.#dom.root.getBoundingClientRect();
+          const curSide = this.#dom.root.getAttribute("data-pill-side") || "right";
+          const newSide = Geo.pickPillSide({ x: r.left, w: r.width }, bounds, 44, curSide);
+          this.#dom.root.setAttribute("data-pill-side", newSide);
+        }
+      };
+
+      this.#floatResizeCleanup = () => {
+        window.removeEventListener("pointermove", onPointerMove);
+        window.removeEventListener("pointerup", onPointerUp);
+        window.removeEventListener("pointercancel", onPointerUp);
+      };
+      window.addEventListener("pointermove", onPointerMove);
+      window.addEventListener("pointerup", onPointerUp);
+      window.addEventListener("pointercancel", onPointerUp);
     }
 
     setupContextMenu() {
@@ -4519,11 +7014,40 @@
     }
 
     handleOutsideClick(e) {
-      if (!this.#state.activeAppId || this.#state.isPinned || this.#state.isInstaPeeking) {
+      if (!this.#state.activeAppId || this.#state.isPinned || this.#state.isFloating || this.#state.isInstaPeeking) {
         return;
       }
       
       const path = e.composedPath ? e.composedPath() : [];
+
+      // Ignore clicks on context menus, popups, and menuitems (e.g. inside #contentAreaContextMenu or #mainPopupSet)
+      const isMenuOrPopup = path.some(el => {
+        const tag = (el.localName || el.tagName || "").toLowerCase();
+        return tag === "menupopup" || tag === "menuitem" || tag === "menu" ||
+               tag === "menuseparator" || tag === "panel" || tag === "popupset" ||
+               el.id === "contentAreaContextMenu" || el.id === "mainPopupSet";
+      }) || (e.target.closest && (
+        e.target.closest("menupopup, menuitem, menu, menuseparator, panel, popupset, #contentAreaContextMenu, #mainPopupSet")
+      ));
+      if (isMenuOrPopup) return;
+
+      // If a content context menu is currently open and associated with the active app panel, ignore click
+      const contextMenu = document.getElementById("contentAreaContextMenu");
+      if (contextMenu && (contextMenu.state === "open" || contextMenu.state === "showing")) {
+        const activeBrowser = this.#state.appBrowsers?.get(this.#state.activeAppId);
+        const isFromAppPanel = (activeBrowser && (
+          contextMenu.triggerNode === activeBrowser ||
+          activeBrowser.contains(contextMenu.triggerNode) ||
+          window.gContextMenu?.browser === activeBrowser
+        )) || (this.#dom.root && (
+          this.#dom.root.contains(contextMenu.triggerNode) ||
+          this.#dom.root.contains(window.gContextMenu?.browser)
+        ));
+        if (isFromAppPanel && path.some(el => (el.id && el.id.includes("context")) || (el.className && typeof el.className === "string" && el.className.includes("menu")))) {
+          return;
+        }
+      }
+
       if (path.some(el => el.id === "zen-app-panel-root" || el.id === "zen-apps-sidebar-grid" || el.id === "zentral-apps-vertical-bar" || (el.classList && el.classList.contains("zen-app-tile")))) return;
       if (path.some(el => el.id === "navigator-toolbox" || el.id === "sidebar-box" || el.id === "PersonalToolbar" || el.id === "nav-bar")) return;
       if (path.some(el => (el.id && el.id.includes("sine")) || (el.className && typeof el.className === "string" && el.className.includes("sine")))) return;
@@ -4540,7 +7064,7 @@
       const parts = shortcutStr.split("+").map(p => p.trim());
       if (parts.length === 0) return false;
 
-      const primaryKey = parts[parts.length - 1].toUpperCase();
+      const primaryKey = parts[parts.length - 1].toUpperCase().replace(/^(UP|DOWN|LEFT|RIGHT)$/, "ARROW$1");
       const needsCtrl = parts.includes("Ctrl");
       const needsAlt = parts.includes("Alt");
       const needsShift = parts.includes("Shift");
@@ -4566,6 +7090,7 @@
     }
 
     handleInstaPeekKeyDown(e) {
+      if (e.defaultPrevented || e.isComposing || document.getElementById("zentral-settings-modal")?.getAttribute("data-open") === "true") return;
       const shortcut = Core.getPref(Constants.Apps.PREF_INSTA_PEEK_SHORTCUT, "Alt+Q");
       if (!shortcut || shortcut === "None") return;
 
@@ -4594,7 +7119,7 @@
       }
 
       const parts = shortcut.split("+").map(p => p.trim());
-      const primaryKey = parts[parts.length - 1].toUpperCase();
+      const primaryKey = parts[parts.length - 1].toUpperCase().replace(/^(UP|DOWN|LEFT|RIGHT)$/, "ARROW$1");
       const needsCtrl = parts.includes("Ctrl");
       const needsAlt = parts.includes("Alt");
       const needsShift = parts.includes("Shift");
@@ -4733,12 +7258,30 @@
           }
         }
         this.updateScrollMask();
+
+        if (this.#state.isFloating && this.#dom.root && this.#state.activeAppId) {
+          const Geo = this.#geo;
+          if (Geo) {
+            const { bounds } = this.getContentAreaGeometry();
+            const rect = this.#dom.root.getBoundingClientRect();
+            const clamped = Geo.clampRect({ x: rect.left, y: rect.top, w: rect.width, h: rect.height }, bounds, { minW: 320, minH: 360 }, { allowOverflow: true, minVisibleMargin: 80 });
+            this.#dom.root.style.left = clamped.x + "px";
+            this.#dom.root.style.top = clamped.y + "px";
+            this.#dom.root.style.width = clamped.w + "px";
+            this.#dom.root.style.height = clamped.h + "px";
+            this.#state.floatRects.set(this.#state.activeAppId, clamped);
+          }
+        }
       } catch (e) {
         console.warn("[ZentralApps] Failed to reposition grid", e);
       }
     }
 
     setupObservers() {
+      const listen = (target, type, handler, options) => {
+        target.addEventListener(type, handler, options);
+        this.#persistentListeners.push([target, type, handler, options]);
+      };
       const menu = document.getElementById("tabContextMenu");
       if (menu && !document.getElementById("context_zenAppsSidebarAdd")) {
         let menuItem;
@@ -4751,7 +7294,7 @@
           menu.appendChild(sep); menu.appendChild(menuItem);
         }
         if (menuItem) {
-          menu.addEventListener("popupshowing", () => { menuItem.disabled = this.#state.apps.length >= Core.getPref(Constants.Apps.PREF_MAX_APPS); });
+          listen(menu, "popupshowing", () => { menuItem.disabled = this.#state.apps.length >= Core.getPref(Constants.Apps.PREF_MAX_APPS); });
           menuItem.addEventListener("command", this.handleTabContextMenuCommand);
         }
       }
@@ -4760,6 +7303,19 @@
       window.addEventListener("keydown", this.handleInstaPeekKeyDown, true);
       window.addEventListener("keyup", this.handleInstaPeekKeyUp, true);
       window.addEventListener("blur", this.handleInstaPeekBlur);
+
+      listen(window, "keydown", (e) => {
+        if (e.defaultPrevented || e.isComposing || document.getElementById("zentral-settings-modal")?.getAttribute("data-open") === "true") return;
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "l") {
+          if (this.#dom.root?.hasAttribute("open") && this.#dom.navUrlInput && this.#dom.navbar?.style.display !== "none") {
+            e.preventDefault();
+            e.stopPropagation();
+            this.#dom.navUrlInput.focus();
+            this.#dom.navUrlInput.select();
+          }
+        }
+      }, true);
+      listen(window, "blur", () => this.#cancelPointerGesture());
 
       this.#tabSelectListener = () => {
         const currentWs = window.gZenWorkspaces?.activeWorkspace;
@@ -4829,8 +7385,8 @@
             attributeFilter: ["style", "class"],
             childList: true
           });
-          el.addEventListener("transitionend", () => this._debouncedSyncTheme(), { passive: true });
-          el.addEventListener("animationend", () => this._debouncedSyncTheme(), { passive: true });
+          listen(el, "transitionend", () => this._debouncedSyncTheme(), { passive: true });
+          listen(el, "animationend", () => this._debouncedSyncTheme(), { passive: true });
         });
       }
 
@@ -4859,10 +7415,7 @@
         this.#resizeObs.observe(sidebarBox);
       }
 
-      window.addEventListener("unload", () => {
-        try { Services.prefs.removeObserver("zen.view.sidebar-expanded", layoutObserver); } catch (_) {}
-        this.stopPositionTracking();
-      }, { once: true });
+      listen(window, "unload", () => this.destroy(), { once: true });
 
       this.scheduleRepositionGrid(200);
     }
@@ -4877,6 +7430,55 @@
    * Enhances native tab groups with color pickers, folder integration, tooltips, and state persistence.
    */
   class ZentralTabGroups {
+    #isolatedAppTabs = new Set();
+    #initialized = false;
+    #destroyed = false;
+    #eventCleanups = [];
+    #groupCleanups = new Map();
+    #pendingTimers = new Set();
+
+    #listen(target, type, listener, options) {
+      target.addEventListener(type, listener, options);
+      const cleanup = () => target.removeEventListener(type, listener, options);
+      const owner = target.closest?.("tab-group");
+      const groupCleanup = owner && this.#groupCleanups.get(owner);
+      if (groupCleanup) groupCleanup.listeners.push(cleanup);
+      else this.#eventCleanups.push(cleanup);
+    }
+
+    #setTimeout(callback, delay) {
+      const timer = setTimeout(() => {
+        this.#pendingTimers.delete(timer);
+        if (!this.#destroyed) callback();
+      }, delay);
+      this.#pendingTimers.add(timer);
+      return timer;
+    }
+
+    #clearTimeout(timer) {
+      clearTimeout(timer);
+      this.#pendingTimers.delete(timer);
+    }
+
+    #getOtherWindowGroupIds() {
+      const ids = new Set();
+      let complete = false;
+      try {
+        const windows = typeof Services !== "undefined" && Services.wm?.getEnumerator("navigator:browser");
+        if (!windows) return { ids, complete };
+        while (windows.hasMoreElements()) {
+          const browserWindow = windows.getNext();
+          if (browserWindow === window || browserWindow.closed) continue;
+          const otherDocument = browserWindow.document;
+          if (!otherDocument?.querySelectorAll) return { ids, complete };
+          for (const group of otherDocument.querySelectorAll("tab-group:not([split-view-group]):not([zen-split-view]):not([is-zen-split])")) {
+            if (group.id) ids.add(group.id);
+          }
+        }
+        complete = true;
+      } catch (_) {}
+      return { ids, complete };
+    }
     /** @private Tabstrip MutationObserver */
     #tabStripObserver = null;
     /** @private Native popup suppression listener */
@@ -4988,8 +7590,25 @@
      * Module tear down for Sine hot unloading
      */
     destroy() {
+      if (this.#destroyed) return;
       try {
         Core.log("ZentralTabGroups", "Destroying TabGroups module...");
+
+        // Capture the intact native hierarchy before removing our decorations.
+        // A partially restored session must never overwrite its recovery state.
+        if (this.#initialized && !this.#isRestoring) this.saveTabGroupState();
+        this.#destroyed = true;
+        for (const timer of this.#pendingTimers) clearTimeout(timer);
+        this.#pendingTimers.clear();
+        for (const tab of this.#isolatedAppTabs) delete tab._zentralForceUngroup;
+        this.#isolatedAppTabs.clear();
+        for (const cleanup of this.#eventCleanups.splice(0)) {
+          try { cleanup(); } catch (_) {}
+        }
+        document.removeEventListener("TabGroupCreate", this.onTabGroupCreate, true);
+        document.removeEventListener("tabgroupcreated", this.onTabGroupCreate, true);
+        try { delete document.getElementById("tabContextMenu")?._zentralEnhanced; } catch (_) {}
+        this.renameGroupHalt(null, true);
 
         // 1. Clear timers
         if (this.#restoreSettleTimer) {
@@ -5061,6 +7680,7 @@
         }
         if (this._tabContextSubmenuListener) {
           try { window.removeEventListener("popupshowing", this._tabContextSubmenuListener, true); } catch (_) {}
+          try { window.removeEventListener("popupshown", this._tabContextSubmenuListener, true); } catch (_) {}
           this._tabContextSubmenuListener = null;
         }
         if (this.#dragGuardCleanup) {
@@ -5084,82 +7704,27 @@
           "zentral-color-picker-panel",
           "zentral-group-color-picker",
           "context_zenFolderUngroup_sep",
-          "context_zenFolderUngroup"
+          "context_zenFolderUngroup",
+          "zentral-tabgroup-folder-separator",
+          "zentral-tabgroup-convert-folder-to-group"
         ];
         idsToRemove.forEach(id => {
           const el = document.getElementById(id);
           if (el) el.remove();
         });
 
-        // 4. Secure state persistence across restarts: prune deleted groups and capture live hierarchy
-        try {
-          this.saveTabGroupState();
-        } catch (_) {}
-        const allGroups = Array.from(document.querySelectorAll("tab-group:not([split-view-group])"));
-
-        // 5. Flatten groups cleanly into regular top-level tabs across their respective workspaces
-        const rootTabContainer = (typeof gZenWorkspaces !== "undefined" && gZenWorkspaces.activeWorkspaceStrip) ||
-                                 gBrowser?.tabContainer?.arrowscrollbox ||
-                                 gBrowser?.tabContainer ||
-                                 document.getElementById("tabbrowser-tabs");
-
-        const sortedGroups = allGroups.slice().sort((a, b) => {
-          let depthA = 0, currA = a;
-          while ((currA = currA.parentElement?.closest("tab-group"))) depthA++;
-          let depthB = 0, currB = b;
-          while ((currB = currB.parentElement?.closest("tab-group"))) depthB++;
-          return depthB - depthA;
-        });
-
-        sortedGroups.forEach(group => {
-          try {
-            const obs = this.#groupObservers.get(group);
-            if (obs) {
-              obs.disconnect();
-              this.#groupObservers.delete(group);
-            }
-
-            if (group.shadowRoot) {
-              group.shadowRoot.querySelectorAll('.zentral-shadow-style').forEach(s => s.remove());
-            }
-
-            const wsId = this.getWorkspaceForElement(group);
-            const wsNormalSection = wsId && window.gZenWorkspaces?.workspaceElement(wsId)?.querySelector(".zen-workspace-normal-tabs-section");
-            const parentContainer = (group.parentNode && group.parentNode.isConnected) ? group.parentNode : (wsNormalSection || rootTabContainer);
-
-            const tabs = Array.from(group.querySelectorAll("tab, tabbrowser-tab, .tabbrowser-tab")).filter(t => t.closest("tab-group") === group);
-
-            // Move tabs directly before the group container in its workspace
-            tabs.forEach(tab => {
-              if (group.parentNode && group.parentNode === parentContainer) {
-                try {
-                  parentContainer.insertBefore(tab, group);
-                } catch (_) {
-                  try { parentContainer.appendChild(tab); } catch (_) {}
-                }
-              } else if (parentContainer) {
-                try { parentContainer.appendChild(tab); } catch (_) {}
-              }
-
-              // Clear native grouping pointers so tabs display as regular flat tabs without indentations
-              try { if (typeof gBrowser?.addTabToGroup === "function") gBrowser.addTabToGroup(tab, null); } catch (_) {}
-              try { tab.group = null; } catch (_) {}
-              try { tab.removeAttribute("group"); tab.removeAttribute("zen-group"); } catch (_) {}
-              // Retain data-zentral-group-id, data-zentral-group-ws, and SessionStore for seamless restore on re-enable
-            });
-
-            // Cleanly remove the tab-group element so there are no empty gaps in the strip
-            try {
-              group.remove();
-            } catch (_) {}
-          } catch (e) {
-            console.error("[ZentralTabGroups] Error flattening group on destroy:", e);
-          }
-        });
+        // Native groups and their tabs belong to the browser, not to this mod.
+        for (const [group, cleanup] of this.#groupCleanups) {
+          try { this.#groupObservers.get(group)?.disconnect(); } catch (_) {}
+          try { cleanup(); } catch (_) {}
+        }
+        this.#groupCleanups.clear();
+        this.#groupObservers = new WeakMap();
 
         // 6. Clean up root attributes
         document.documentElement.removeAttribute("zentral-sidebar-collapsed");
         document.documentElement.removeAttribute("zentral-show-chevron");
+        document.documentElement.removeAttribute("zentral-indicator-type");
         document.documentElement.removeAttribute("zentral-label-opacity-below-85");
         document.documentElement.removeAttribute("zen-renaming-group");
         document.documentElement.style.removeProperty("--zentral-tabgroup-label-opacity");
@@ -5213,8 +7778,13 @@
      */
     sanitizeState(state) {
       if (!state || typeof state !== "object") return { groups: {}, tabMapping: {} };
-      const groups = { ...(state.groups || {}) };
+      const hasTabMapping = !!state.tabMapping && typeof state.tabMapping === "object";
+      const groups = { ...(state.groups || state) };
       const tabMapping = { ...(state.tabMapping || {}) };
+
+      // Older versions stored only group metadata. Missing mappings are unknown,
+      // not evidence of an empty group.
+      if (!hasTabMapping) return { groups, tabMapping };
 
       // Find all groups that are parents of other groups
       const parentIds = new Set();
@@ -5227,12 +7797,7 @@
         const tabs = tabMapping[id] || [];
         const isParent = parentIds.has(id);
         const hasNoTabs = !tabs || tabs.length === 0;
-        const cleanLabel = (g?.label || "").replace(/[\u200B-\u200D\uFEFF]/g, "").trim();
-
         if (hasNoTabs && !isParent) {
-          delete groups[id];
-          delete tabMapping[id];
-        } else if (!cleanLabel && hasNoTabs) {
           delete groups[id];
           delete tabMapping[id];
         }
@@ -5245,6 +7810,7 @@
      * Reconstructs tab-group containers from tabs tagged with data-zentral-group-* attributes, SessionStore values, or saved state.
      */
     reconstructSavedGroups() {
+      if (this.#destroyed) return;
       try {
         const ss = this.#getSessionStore();
 
@@ -5332,9 +7898,10 @@
                                (ss?.getCustomTabValue?.(tab, "zentral-parent-id")) ||
                                savedMeta.parentId ||
                                null;
-              const collapsed = tab.getAttribute("data-zentral-group-collapsed") === "true" ||
-                                (ss?.getCustomTabValue?.(tab, "zentral-group-collapsed") === "true") ||
-                                savedMeta.collapsed === true;
+              const storedCollapsed = tab.hasAttribute("data-zentral-group-collapsed")
+                ? tab.getAttribute("data-zentral-group-collapsed")
+                : ss?.getCustomTabValue?.(tab, "zentral-group-collapsed");
+              const collapsed = storedCollapsed === "true" || (storedCollapsed !== "false" && savedMeta.collapsed === true);
               const wsId = tab.getAttribute("data-zentral-group-ws") ||
                            (ss?.getCustomTabValue?.(tab, "zentral-group-ws")) ||
                            savedMeta.workspaceId ||
@@ -5696,10 +8263,10 @@
      */
     safeHideTooltip(delayMs = 350) {
       if (window.zentralTooltipHideTimer) {
-        clearTimeout(window.zentralTooltipHideTimer);
+        this.#clearTimeout(window.zentralTooltipHideTimer);
         window.zentralTooltipHideTimer = null;
       }
-      window.zentralTooltipHideTimer = setTimeout(() => {
+      window.zentralTooltipHideTimer = this.#setTimeout(() => {
         const panel = document.getElementById("zentral-tabgroup-tooltip");
         const container = document.getElementById("zentral-tabgroup-tooltip-container");
         if (!panel || typeof panel.hidePopup !== "function") return;
@@ -5765,6 +8332,7 @@
      * Initializes Tab Groups module observers, styles, color palettes, and tooltip containers.
      */
     init() {
+      if (this.#initialized || this.#destroyed) return;
       if (typeof PrivateBrowsingUtils !== "undefined" && PrivateBrowsingUtils.isWindowPrivate(window)) {
         Core.log("ZentralTabGroups", "Tab Groups disabled in private window.");
         return;
@@ -5773,6 +8341,7 @@
         Core.log("ZentralTabGroups", "Tab Groups feature is disabled.");
         return;
       }
+      this.#initialized = true;
       this.#isRestoring = true;
       this.clearStoredColorData();
       this.loadSavedColors();
@@ -5789,11 +8358,11 @@
       this.hookAddTab();
       document.addEventListener("TabGroupCreate", this.onTabGroupCreate, true);
       document.addEventListener("tabgroupcreated", this.onTabGroupCreate, true);
-      document.addEventListener("TabGroupCreateByUser", (e) => {
+      this.#listen(document, "TabGroupCreateByUser", (e) => {
         const group = e.target?.closest ? (e.target.closest('tab-group:not([split-view-group])') || (e.target.tagName === 'TAB-GROUP' ? e.target : null)) : null;
         if (group && !this.#isRestoring) this.checkAndApplyFirstTimeGroupColor(group);
       }, true);
-      document.addEventListener("TabGroupUpdate", (e) => {
+      this.#listen(document, "TabGroupUpdate", (e) => {
         const group = e.target?.closest ? (e.target.closest('tab-group:not([split-view-group])') || (e.target.tagName === 'TAB-GROUP' ? e.target : null)) : null;
         if (group && !this.#isRestoring) this.checkAndApplyFirstTimeGroupColor(group);
       }, true);
@@ -5843,6 +8412,8 @@
       // Workspace switch listener to ensure tab groups in newly focused Space are rendered & restored
       this.#workspaceSwitchListener = () => {
         try {
+          // Save pending edits before reconstruction reads the previous snapshot.
+          if (this.#state.saveStateTimer && !this.#isRestoring) this.saveTabGroupState();
           this.reconstructSavedGroups();
           this.loadTabGroupState();
           document.querySelectorAll("tab-group:not([split-view-group])").forEach(g => this.processGroup(g));
@@ -5881,14 +8452,7 @@
       });
       this.#rootAttrObs.observe(document.documentElement, { attributes: true, attributeFilter: ["zen-sidebar-collapsed", "zen-right-side"] });
 
-      // Clean up pref observer on window close to prevent ghost observers (H-03)
-      window.addEventListener("unload", () => {
-        try { 
-          Services.prefs.removeObserver("zen.view.sidebar-expanded", updateSidebarAttr);
-          Services.prefs.removeObserver("zen.view.use-single-toolbar", updateSidebarAttr);
-          rootAttrObs.disconnect();
-        } catch (_) {}
-      }, { once: true });
+      // The bootstrap unload handler calls destroy(), which owns these observers.
 
       // Tooltip injection (XUL panel with noautohide=true to avoid stealing click events)
       if (!document.getElementById("zentral-tabgroup-tooltip")) {
@@ -5898,10 +8462,11 @@
         panel.setAttribute("noautohide", "true");
         panel.setAttribute("type", "arrow");
         panel.setAttribute("role", "tooltip");
+        panel.setAttribute("zentral-effective-theme", Core.isEffectiveDarkMode() ? "dark" : "light");
 
         const cancelHideTimer = () => {
           if (window.zentralTooltipHideTimer) {
-            clearTimeout(window.zentralTooltipHideTimer);
+            this.#clearTimeout(window.zentralTooltipHideTimer);
             window.zentralTooltipHideTimer = null;
           }
         };
@@ -5986,6 +8551,7 @@
           --panel-border-color: transparent !important;
           background: transparent !important;
           border: none !important;
+          color-scheme: light dark !important;
         }
         #zentral-tabgroup-tooltip::part(content) {
           border: none !important;
@@ -5994,11 +8560,12 @@
           box-shadow: none !important;
         }
         #zentral-tabgroup-tooltip-container {
-          background: var(--zen-colors-tertiary, var(--arrowpanel-background, var(--tabpanels-background-color, #1e1e22))) !important;
-          color: var(--zen-colors-text, var(--arrowpanel-color, var(--in-content-page-color, #fbfbfe))) !important;
-          border: 1px solid var(--zen-colors-border, var(--arrowpanel-border-color, color-mix(in srgb, currentColor 12%, rgba(255, 255, 255, 0.08)))) !important;
+          color-scheme: light dark !important;
+          background: var(--zen-colors-tertiary, var(--arrowpanel-background, light-dark(#ffffff, #1e1e22))) !important;
+          color: var(--zen-colors-primary-foreground, light-dark(#18181b, #fbfbfe)) !important;
+          border: 1px solid var(--zen-colors-border, var(--arrowpanel-border-color, light-dark(rgba(0, 0, 0, 0.12), rgba(255, 255, 255, 0.12)))) !important;
           border-radius: 12px !important;
-          box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55), 0 0 0 1px color-mix(in srgb, currentColor 8%, transparent) !important;
+          box-shadow: 0 12px 32px light-dark(rgba(0, 0, 0, 0.16), rgba(0, 0, 0, 0.55)), 0 0 0 1px color-mix(in srgb, currentColor 8%, transparent) !important;
           padding: 6px !important;
           gap: 2px !important;
           font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
@@ -6107,16 +8674,73 @@
           white-space: nowrap !important;
           overflow: hidden !important;
           text-overflow: ellipsis !important;
-          color: inherit !important;
+          color: light-dark(#18181b, #fbfbfe) !important;
         }
         .zentral-tooltip-domain {
           font-size: 10.5px !important;
-          opacity: 0.65 !important;
+          opacity: 0.72 !important;
           white-space: nowrap !important;
           overflow: hidden !important;
           text-overflow: ellipsis !important;
           margin-top: 1px !important;
-          color: inherit !important;
+          color: light-dark(#52525b, #a1a1aa) !important;
+        }
+
+        /* Tooltip Container & Items - Light Mode */
+        #zentral-tabgroup-tooltip[zentral-effective-theme="light"] #zentral-tabgroup-tooltip-container,
+        :root[zentral-effective-theme="light"] #zentral-tabgroup-tooltip-container,
+        :root:not([zentral-effective-theme="dark"]) #zentral-tabgroup-tooltip-container {
+          color-scheme: light !important;
+          background: #ffffff !important;
+          color: #18181b !important;
+          border: 1px solid rgba(0, 0, 0, 0.14) !important;
+          box-shadow: 0 12px 28px rgba(0, 0, 0, 0.14), 0 0 0 1px rgba(0, 0, 0, 0.08) !important;
+        }
+        #zentral-tabgroup-tooltip[zentral-effective-theme="light"] .zentral-tooltip-title,
+        :root[zentral-effective-theme="light"] .zentral-tooltip-title,
+        :root:not([zentral-effective-theme="dark"]) .zentral-tooltip-title {
+          color: #18181b !important;
+        }
+        #zentral-tabgroup-tooltip[zentral-effective-theme="light"] .zentral-tooltip-domain,
+        :root[zentral-effective-theme="light"] .zentral-tooltip-domain,
+        :root:not([zentral-effective-theme="dark"]) .zentral-tooltip-domain {
+          color: #52525b !important;
+        }
+        #zentral-tabgroup-tooltip[zentral-effective-theme="light"] .zentral-tooltip-row:hover,
+        :root[zentral-effective-theme="light"] .zentral-tooltip-row:hover,
+        :root:not([zentral-effective-theme="dark"]) .zentral-tooltip-row:hover {
+          background-color: rgba(0, 0, 0, 0.06) !important;
+        }
+        #zentral-tabgroup-tooltip[zentral-effective-theme="light"] .zentral-tooltip-close-btn,
+        :root[zentral-effective-theme="light"] .zentral-tooltip-close-btn,
+        :root:not([zentral-effective-theme="dark"]) .zentral-tooltip-close-btn {
+          color: #333333 !important;
+        }
+
+        /* Tooltip Container & Items - Dark Mode */
+        #zentral-tabgroup-tooltip[zentral-effective-theme="dark"] #zentral-tabgroup-tooltip-container,
+        :root[zentral-effective-theme="dark"] #zentral-tabgroup-tooltip-container {
+          color-scheme: dark !important;
+          background: #1e1e22 !important;
+          color: #fbfbfe !important;
+          border: 1px solid rgba(255, 255, 255, 0.12) !important;
+          box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.08) !important;
+        }
+        #zentral-tabgroup-tooltip[zentral-effective-theme="dark"] .zentral-tooltip-title,
+        :root[zentral-effective-theme="dark"] .zentral-tooltip-title {
+          color: #fbfbfe !important;
+        }
+        #zentral-tabgroup-tooltip[zentral-effective-theme="dark"] .zentral-tooltip-domain,
+        :root[zentral-effective-theme="dark"] .zentral-tooltip-domain {
+          color: #a1a1aa !important;
+        }
+        #zentral-tabgroup-tooltip[zentral-effective-theme="dark"] .zentral-tooltip-row:hover,
+        :root[zentral-effective-theme="dark"] .zentral-tooltip-row:hover {
+          background-color: rgba(255, 255, 255, 0.08) !important;
+        }
+        #zentral-tabgroup-tooltip[zentral-effective-theme="dark"] .zentral-tooltip-close-btn,
+        :root[zentral-effective-theme="dark"] .zentral-tooltip-close-btn {
+          color: #fbfbfe !important;
         }
 
         /* Zentral Color Picker Panel Styling */
@@ -6269,6 +8893,54 @@
      * a grouped tab (via link click or middle-click) are placed directly below the originating tab
      * inside the same group. Tabs opened from an App Panel are kept outside of any group.
      */
+    #isAppPanelActive() {
+      const panel = document.getElementById("zen-app-panel-root");
+      if (panel?.hasAttribute("closing")) return false;
+      return (typeof window.Zentral?.Apps?.isPanelOpen === "function" && window.Zentral.Apps.isPanelOpen()) ||
+        document.documentElement.getAttribute("zentral-app-panel-open") === "true" ||
+        panel?.hasAttribute("open") || false;
+    }
+
+    #isolateAppTab(tab) {
+      if (this.#isolatedAppTabs.has(tab)) return;
+      const inheritedGroups = new Set([
+        tab.closest?.("tab-group"),
+        tab.ownerTab?.closest?.("tab-group"),
+        window.gBrowser?.selectedTab?.closest?.("tab-group")
+      ].filter(Boolean));
+      this.#isolatedAppTabs.add(tab);
+      tab._zentralForceUngroup = true;
+      const release = () => {
+        this.#isolatedAppTabs.delete(tab);
+        delete tab._zentralForceUngroup;
+      };
+      const forceUngroup = () => {
+        if (!this.#isolatedAppTabs.has(tab)) return;
+        const group = tab.closest?.("tab-group");
+        // A later explicit grouping must win over delayed app-tab isolation.
+        if (!tab.isConnected || (group && !inheritedGroups.has(group))) {
+          release();
+          return;
+        }
+        try { window.gBrowser?.moveTabToEnd?.(tab); } catch (_) {}
+        tab.removeAttribute("group");
+        tab.removeAttribute("zen-group");
+        for (const name of ["id", "label", "color", "collapsed", "ws"]) {
+          tab.removeAttribute(`data-zentral-group-${name}`);
+          try { this.#getSessionStore()?.deleteCustomTabValue?.(tab, `zentral-group-${name}`); } catch (_) {}
+        }
+        try { window.gBrowser?.tabContainer?._invalidateCachedTabs?.(); } catch (_) {}
+        this.scheduleStateSave();
+      };
+      forceUngroup();
+      for (const delay of [0, 50, 150]) {
+        this.#setTimeout(() => {
+          forceUngroup();
+          if (delay === 150) release();
+        }, delay);
+      }
+    }
+
     setupTabOpenHandler() {
       if (this.#tabOpenListener) return;
       this.#tabOpenListener = (e) => {
@@ -6276,42 +8948,9 @@
         if (!tab || tab.tagName?.toLowerCase() !== "tab") return;
 
         // 1. App Panel Isolation: If link was opened while an App panel is open, keep outside any group
-        const isAppPanelOpen = (typeof window.Zentral?.Apps?.isPanelOpen === "function" && window.Zentral.Apps.isPanelOpen()) ||
-                               document.documentElement.getAttribute("zentral-app-panel-open") === "true" ||
-                               document.getElementById("zen-app-panel-root")?.hasAttribute("open") ||
-                               !!document.activeElement?.closest?.("#zen-app-panel-root, #zen-app-panel-slider, .zen-app-panel-wrapper") ||
-                               tab._zentralForceUngroup === true;
+        const isAppPanelOpen = this.#isAppPanelActive() || this.#isolatedAppTabs.has(tab);
         if (isAppPanelOpen) {
-          const forceUngroup = () => {
-            try {
-              if (typeof window.gBrowser?.moveTabToEnd === "function") {
-                window.gBrowser.moveTabToEnd(tab);
-              }
-            } catch (_) {}
-            tab.removeAttribute("group");
-            tab.removeAttribute("zen-group");
-            ["data-zentral-group-id", "data-zentral-group-label", "data-zentral-group-color", "data-zentral-group-collapsed", "data-zentral-group-ws"].forEach(attr => tab.removeAttribute(attr));
-            
-            const ss = this.#getSessionStore();
-            if (ss) {
-              try {
-                ss.deleteCustomTabValue?.(tab, "zentral-group-id");
-                ss.deleteCustomTabValue?.(tab, "zentral-group-label");
-                ss.deleteCustomTabValue?.(tab, "zentral-group-color");
-                ss.deleteCustomTabValue?.(tab, "zentral-group-collapsed");
-                ss.deleteCustomTabValue?.(tab, "zentral-group-ws");
-              } catch (_) {}
-            }
-            try {
-              window.gBrowser?.tabContainer?._invalidateCachedTabs?.();
-            } catch (_) {}
-            this.scheduleStateSave();
-          };
-
-          forceUngroup();
-          window.setTimeout(forceUngroup, 0);
-          window.setTimeout(forceUngroup, 50);
-          window.setTimeout(forceUngroup, 150);
+          this.#isolateAppTab(tab);
           return;
         }
 
@@ -6387,10 +9026,7 @@
       const self = this;
 
       window.gBrowser.addTab = function(aURI, aParams = {}) {
-        const isAppOpen = (typeof window.Zentral?.Apps?.isPanelOpen === "function" && window.Zentral.Apps.isPanelOpen()) ||
-                          document.documentElement.getAttribute("zentral-app-panel-open") === "true" ||
-                          document.getElementById("zen-app-panel-root")?.hasAttribute("open") ||
-                          !!document.activeElement?.closest?.("#zen-app-panel-root, #zen-app-panel-slider, .zen-app-panel-wrapper");
+        const isAppOpen = self.#isAppPanelActive();
 
         if (isAppOpen && aParams && typeof aParams === "object") {
           aParams.tabGroup = null;
@@ -6401,22 +9037,7 @@
         const tab = self.#origAddTab.call(this, aURI, aParams);
 
         if (isAppOpen && tab) {
-          tab._zentralForceUngroup = true;
-          const forceUngroup = () => {
-            try {
-              if (typeof window.gBrowser?.moveTabToEnd === "function") {
-                window.gBrowser.moveTabToEnd(tab);
-              }
-            } catch (_) {}
-            tab.removeAttribute("group");
-            tab.removeAttribute("zen-group");
-            ["data-zentral-group-id", "data-zentral-group-label", "data-zentral-group-color", "data-zentral-group-collapsed", "data-zentral-group-ws"].forEach(a => tab.removeAttribute(a));
-            try { window.gBrowser?.tabContainer?._invalidateCachedTabs?.(); } catch (_) {}
-          };
-          forceUngroup();
-          window.setTimeout(forceUngroup, 0);
-          window.setTimeout(forceUngroup, 50);
-          window.setTimeout(forceUngroup, 150);
+          self.#isolateAppTab(tab);
         }
 
         return tab;
@@ -6469,7 +9090,7 @@
               if (tag === "TAB-GROUP") {
                 groupsStructureChanged = true;
                 window.requestAnimationFrame(() => {
-                  if (node.isConnected) {
+                  if (!this.#destroyed && node.isConnected) {
                     const isSplit = node.hasAttribute?.("split-view-group") || 
                                     node.hasAttribute?.("zen-split-view") || 
                                     node.hasAttribute?.("is-zen-split") || 
@@ -6493,7 +9114,7 @@
                 groupsStructureChanged = true;
                 childGroups.forEach((group) => {
                   window.requestAnimationFrame(() => {
-                    if (group.isConnected) {
+                    if (!this.#destroyed && group.isConnected) {
                       const gSplit = group.hasAttribute?.("split-view-group") || 
                                      group.hasAttribute?.("zen-split-view") || 
                                      group.hasAttribute?.("is-zen-split") || 
@@ -6523,12 +9144,18 @@
             
             for (const node of mutation.removedNodes) {
               if (node.nodeType === Node.ELEMENT_NODE && node.tagName?.toUpperCase() === "TAB-GROUP") {
+                // Reparenting emits a removal too. Keep its metadata and bindings.
+                if (node.isConnected || this.#isRestoring) continue;
                 needsSave = true;
                 groupsStructureChanged = true;
                 const obs = this.#groupObservers.get(node);
                 if (obs) { obs.disconnect(); this.#groupObservers.delete(node); }
+                try { this.#groupCleanups.get(node)?.(); } catch (_) {}
+                this.#groupCleanups.delete(node);
                 this.#processedGroups.delete(node);
                 if (node.id) {
+                  const otherWindows = this.#getOtherWindowGroupIds();
+                  if (!otherWindows.complete || otherWindows.ids.has(node.id)) continue;
                   try { this.removeSavedColor(node.id); } catch (_) {}
                   try {
                     const stateStr = Core.getPref(Constants.TabGroups.PREF_STATE);
@@ -6650,7 +9277,7 @@
           if (typeof target.hidePopup === "function") {
             try { target.hidePopup(); } catch (_) {}
           }
-          try { target.remove(); } catch (_) {}
+          // Keep native controls alive so disabling Zentral restores their use.
         }
       };
       window.addEventListener("popupshowing", this.#popupShowingListener, true);
@@ -6679,12 +9306,10 @@
             const list = root.querySelectorAll ? root.querySelectorAll(sel) : [];
             list.forEach(el => {
               if (typeof el.hidePopup === "function") el.hidePopup();
-              try { el.remove(); } catch (_) {}
             });
             const el = document.getElementById(sel.replace("#", ""));
             if (el) {
               if (typeof el.hidePopup === "function") el.hidePopup();
-              try { el.remove(); } catch (_) {}
             }
           } catch (_) {}
         });
@@ -6752,7 +9377,7 @@
 
       this.#state.groupEdited = labelElement;
       this.#state.isStartingRename = true;
-      setTimeout(() => { this.#state.isStartingRename = false; }, 350);
+      this.#setTimeout(() => { this.#state.isStartingRename = false; }, 350);
 
       document.documentElement.setAttribute('zen-renaming-group', 'true');
       labelElement.classList.add('tab-group-label-editing');
@@ -6766,7 +9391,7 @@
       input.setAttribute('autocomplete', 'off');
 
       labelElement.after(input);
-      setTimeout(() => {
+      this.#setTimeout(() => {
         try {
           input.focus();
           if (selectAll) input.select();
@@ -6809,7 +9434,7 @@
     processGroup(group) {
       // Use a WeakSet instead of a DOM attribute to avoid persisting across restarts
       // and to prevent guard bypasses when native code resets group attributes.
-      if (!group || 
+      if (this.#destroyed || !group ||
           this.#processedGroups.has(group) || 
           group.classList?.contains("zen-folder") || 
           group.hasAttribute?.("zen-folder") || 
@@ -6820,6 +9445,68 @@
           group.classList?.contains("zen-split-view")) {
         return;
       }
+      const existingLabel = Array.from(group.querySelectorAll(".tab-group-label-container")).find(element => element.closest("tab-group") === group);
+      const originalElements = new Set(existingLabel ? [existingLabel, ...existingLabel.querySelectorAll("*")] : []);
+      const originalStyles = new Map();
+      const captureStyles = (element, properties) => {
+        if (element) originalStyles.set(element, properties.map(property => [property, element.style.getPropertyValue(property), element.style.getPropertyPriority?.(property) || ""]));
+      };
+      captureStyles(group, ["border-radius"]);
+      const originalLabel = [...originalElements].find(element => element.classList.contains("tab-group-label-container"));
+      captureStyles(originalLabel, ["border-radius", "aspect-ratio", "align-self", "width", "min-width", "max-width", "height", "min-height", "max-height", "box-sizing", "display", "flex-direction", "align-items", "padding"]);
+      captureStyles(originalLabel?.querySelector(".tab-group-label"), ["border-radius", "width", "flex", "overflow", "text-overflow"]);
+      const originalIcon = originalLabel?.querySelector(".tab-group-icon");
+      captureStyles(originalIcon, ["display", "border", "outline", "box-shadow", "background", "background-image"]);
+      const originalHidden = new Map();
+      for (const element of originalIcon?.children || []) {
+        captureStyles(element, ["display", "visibility", "width", "height", "min-width", "min-height", "opacity", "list-style-image", "background"]);
+        originalHidden.set(element, element.hasAttribute("hidden") ? element.getAttribute("hidden") : null);
+      }
+      const originalContext = group.getAttribute("context");
+      const originalLabelContext = existingLabel?.hasAttribute("context") ? existingLabel.getAttribute("context") : null;
+      const wasStandard = group.classList.contains("zentral-standard");
+      const originalMethods = new Map(["ungroupTabs", "_useFaviconColor"].map(key => [key, Object.getOwnPropertyDescriptor(group, key)]));
+      const cleanup = () => {
+        for (const removeListener of cleanup.listeners.splice(0)) removeListener();
+        this.#groupObservers.get(group)?.disconnect();
+        const label = group.querySelector(".tab-group-label-container");
+        if (label) {
+          delete label._zentralToggleBound;
+          delete label._zentralContextMenuBound;
+          label.removeAttribute("zentral-hover");
+          if (originalLabelContext !== null) label.setAttribute("context", originalLabelContext);
+          else label.removeAttribute("context");
+          const wrapper = label.querySelector(".zentral-tab-title-wrapper");
+          if (wrapper && !originalElements.has(wrapper)) {
+            while (wrapper.firstChild) label.insertBefore(wrapper.firstChild, wrapper);
+            wrapper.remove();
+          }
+          label.querySelectorAll(".zentral-group-initials, .zentral-subgroups-badge, .tab-close-button, .tab-group-icon-container").forEach(element => {
+            if (!originalElements.has(element)) element.remove();
+          });
+        }
+        group.shadowRoot?.querySelectorAll(".zentral-shadow-style").forEach(element => element.remove());
+        for (const [element, properties] of originalStyles) {
+          for (const [property, value, priority] of properties) {
+            if (value) element.style.setProperty(property, value, priority);
+            else element.style.removeProperty(property);
+          }
+        }
+        for (const [element, hidden] of originalHidden) {
+          if (hidden !== null) element.setAttribute("hidden", hidden);
+          else element.removeAttribute("hidden");
+        }
+        if (!wasStandard) group.classList.remove("zentral-standard");
+        for (const attr of ["zentral-group", "data-close-button-added", "data-has-subgroups"]) group.removeAttribute(attr);
+        if (originalContext) group.setAttribute("context", originalContext);
+        else group.removeAttribute("context");
+        for (const [key, descriptor] of originalMethods) {
+          if (descriptor) Object.defineProperty(group, key, descriptor);
+          else delete group[key];
+        }
+      };
+      cleanup.listeners = [];
+      this.#groupCleanups.set(group, cleanup);
       group.classList.add("zentral-standard");
       group.setAttribute("zentral-group", "true");
       group.style.setProperty("border-radius", "6px", "important");
@@ -6850,7 +9537,7 @@
       // Bind click collapse toggle to ensure all groups (top-level and nested) collapse/expand on click
       if (!labelContainer._zentralToggleBound) {
         labelContainer._zentralToggleBound = true;
-        labelContainer.addEventListener("click", (e) => {
+        this.#listen(labelContainer, "click", (e) => {
           if (e.target.closest(".tab-close-button") || e.target.closest("#tab-label-input") || e.target.closest(".zentral-tg-drag-handle")) return;
           e.preventDefault();
           e.stopPropagation();
@@ -6962,6 +9649,9 @@
           if (_styleGuard || _isHovered) return;
           _styleGuard = true;
           enforceRestingStyles();
+          // MutationObserver notifications are asynchronous. A synchronous flag
+          // alone cannot suppress the notifications from our own style writes.
+          styleWatcher.takeRecords();
           _styleGuard = false;
         });
         styleWatcher.observe(labelContainer, { attributes: true, attributeFilter: ["style"] });
@@ -6971,10 +9661,12 @@
         // Labels are always full-width ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â no hover expand/collapse needed.
         
         let hoverTimer = null;
-        labelContainer.addEventListener("mouseenter", () => {
+        this.#listen(labelContainer, "mouseenter", () => {
           if (!Core.getPref(Constants.TabGroups.PREF_THUMBNAILS)) return;
+          Core.updateEffectiveTheme();
           labelContainer.setAttribute("zentral-hover", "true");
-          hoverTimer = setTimeout(() => {
+          hoverTimer = this.#setTimeout(() => {
+            Core.updateEffectiveTheme();
             const panel = document.getElementById("zentral-tabgroup-tooltip");
             const container = document.getElementById("zentral-tabgroup-tooltip-container");
             if (panel && container && group) {
@@ -7078,7 +9770,7 @@
                       row.style.marginTop = "0";
                       row.style.marginBottom = "0";
                     });
-                    setTimeout(() => {
+                    this.#setTimeout(() => {
                       row.remove();
                       if (container.querySelectorAll(".zentral-tooltip-row").length === 0) {
                         const div = document.createElement("div");
@@ -7099,17 +9791,17 @@
             }
           }, 350);
         });
-        labelContainer.addEventListener("mouseleave", () => {
+        this.#listen(labelContainer, "mouseleave", () => {
           labelContainer.removeAttribute("zentral-hover");
-          if (hoverTimer) clearTimeout(hoverTimer);
+          if (hoverTimer) this.#clearTimeout(hoverTimer);
           this.safeHideTooltip(350);
         });
-        labelContainer.addEventListener("mousedown", () => {
-          if (hoverTimer) clearTimeout(hoverTimer);
+        this.#listen(labelContainer, "mousedown", () => {
+          if (hoverTimer) this.#clearTimeout(hoverTimer);
           const panel = document.getElementById("zentral-tabgroup-tooltip");
           if (panel && panel.hidePopup) panel.hidePopup();
         });
-        labelContainer.addEventListener("dblclick", (e) => {
+        this.#listen(labelContainer, "dblclick", (e) => {
           if (e.target.closest(".tab-close-button") || e.target.closest(".tab-group-icon")) return;
           e.preventDefault();
           e.stopPropagation();
@@ -7132,7 +9824,7 @@
         labelContainer.insertBefore(iconContainer, labelContainer.firstChild);
         labelContainer.appendChild(closeButton);
 
-        closeButton.addEventListener("click", (event) => {
+        this.#listen(closeButton, "click", (event) => {
           event.stopPropagation();
           event.preventDefault();
           try {
@@ -7545,7 +10237,7 @@
         e.preventDefault();
       });
 
-      window.addEventListener("mousemove", (e) => {
+      this.#listen(window, "mousemove", (e) => {
         if (!isDragging) return;
         const deltaX = e.screenX - startX;
         const deltaY = e.screenY - startY;
@@ -7557,7 +10249,7 @@
         panel.moveTo(currentX + deltaX, currentY + deltaY);
       });
 
-      window.addEventListener("mouseup", (e) => {
+      this.#listen(window, "mouseup", (e) => {
         if (isDragging && e.button === 0) {
           isDragging = false;
           handle.classList.remove("dragging");
@@ -7582,7 +10274,7 @@
      * Attaches custom context menu actions to native Zen folder menus.
      */
     addFolderContextMenuItems() {
-      setTimeout(() => {
+      this.#setTimeout(() => {
         const folderMenu = document.getElementById("zenFolderActions");
         if (!folderMenu || folderMenu.querySelector("#zentral-tabgroup-convert-folder-to-group")) return;
         
@@ -7591,7 +10283,7 @@
           const convertToSpaceItem = folderMenu.querySelector("#context_zenFolderToSpace");
           if (convertToSpaceItem) { convertToSpaceItem.after(frag); } else { folderMenu.appendChild(frag); }
           
-          folderMenu.addEventListener('command', (event) => {
+          this.#listen(folderMenu, 'command', (event) => {
             if (event.target.id === 'zentral-tabgroup-convert-folder-to-group') {
               const triggerNode = folderMenu.triggerNode;
               const folder = triggerNode?.closest('zen-folder');
@@ -7677,7 +10369,7 @@
           const popup = e.target;
           if (popup && (popup.id === "context_moveTabToGroupPopupMenu" || popup.id?.includes("TabToGroup") || popup.parentNode?.id === "context_moveTabToGroup")) {
             handleGroupSubmenu(popup);
-            setTimeout(() => handleGroupSubmenu(popup), 0);
+            this.#setTimeout(() => handleGroupSubmenu(popup), 0);
           }
         };
         window.addEventListener("popupshowing", this._tabContextSubmenuListener, true);
@@ -7714,7 +10406,7 @@
         labelContainer.setAttribute("context", "zentral-tabgroup-context-menu");
         if (!labelContainer._zentralContextMenuBound) {
           labelContainer._zentralContextMenuBound = true;
-          labelContainer.addEventListener("contextmenu", (event) => {
+          this.#listen(labelContainer, "contextmenu", (event) => {
             if (event.target.closest("#tab-label-input")) return;
             event.preventDefault();
             event.stopPropagation();
@@ -7965,7 +10657,11 @@
      * @param {boolean} [force=false] - Force apply even if already colored.
      */
     async applyAverageGroupColor(group, force = false) {
-      if (!group || !group.isConnected) return;
+      if (this.#destroyed || !group || !group.isConnected) return;
+      const colorAtStart = group.style.getPropertyValue("--zentral-custom-color");
+      const tabColorAtStart = group.style.getPropertyValue("--tab-group-color");
+      const colorChanged = () => group.style.getPropertyValue("--zentral-custom-color") !== colorAtStart ||
+                                 group.style.getPropertyValue("--tab-group-color") !== tabColorAtStart;
 
       if (!force) {
         const customColor = group.style.getPropertyValue("--zentral-custom-color");
@@ -7994,7 +10690,7 @@
         let attempt = 0;
         while (tabs.length === 0 && attempt < retryDelays.length) {
           await new Promise(r => setTimeout(r, retryDelays[attempt++]));
-          if (!group.isConnected) return;
+          if (this.#destroyed || !group.isConnected || colorChanged()) return;
           tabs = this.getDirectTabs(group);
         }
 
@@ -8003,6 +10699,7 @@
         const colors = [];
         for (const tab of tabs) {
           const col = await this.extractTabFaviconColor(tab);
+          if (this.#destroyed || !group.isConnected || colorChanged()) return;
           if (col) colors.push(col);
         }
 
@@ -8026,13 +10723,15 @@
 
         // If colors were not ready yet (favicon was still downloading), schedule a retry upgrade after 750ms
         if (colors.length === 0) {
-          setTimeout(async () => {
-            if (!group.isConnected) return;
+          const fallbackColor = group.style.getPropertyValue("--zentral-custom-color");
+          this.#setTimeout(async () => {
+            if (this.#destroyed || !group.isConnected || group.style.getPropertyValue("--zentral-custom-color") !== fallbackColor) return;
             const retryTabs = this.getDirectTabs(group);
             if (retryTabs.length === 0) return;
             const retryColors = [];
             for (const tab of retryTabs) {
               const col = await this.extractTabFaviconColor(tab);
+              if (this.#destroyed || !group.isConnected || group.style.getPropertyValue("--zentral-custom-color") !== fallbackColor) return;
               if (col) retryColors.push(col);
             }
             if (retryColors.length > 0) {
@@ -8087,7 +10786,7 @@
      * Schedules a debounced refresh of sub-groups indicator badges.
      */
     scheduleBadgeUpdate() {
-      if (this.#badgeUpdateRAF) return;
+      if (this.#destroyed || this.#badgeUpdateRAF) return;
       this.#badgeUpdateRAF = window.requestAnimationFrame(() => {
         this.#badgeUpdateRAF = null;
         this.updateAllSubGroupsBadges();
@@ -8158,6 +10857,40 @@
       let dragCandidateTab = null;
       let startX = 0;
       let startY = 0;
+      let restoreSelection = null;
+
+      // Firefox may expose these as own accessors, not only prototype accessors.
+      // Preserve the exact descriptor and roll back partial locks on failure.
+      const lockSelection = (activeTab, isolatedTab = null) => {
+        const restores = [];
+        const restore = () => {
+          for (const undo of restores.reverse()) undo();
+        };
+        const override = (target, key, descriptor) => {
+          const original = Object.getOwnPropertyDescriptor(target, key);
+          Object.defineProperty(target, key, { ...descriptor, configurable: true });
+          restores.push(() => {
+            if (original) Object.defineProperty(target, key, original);
+            else delete target[key];
+          });
+        };
+        try {
+          if (window.gBrowser) {
+            if (isolatedTab) override(window.gBrowser, "selectedElements", { get: () => [isolatedTab] });
+            override(window.gBrowser, "selectedTab", { get: () => activeTab, set: () => {} });
+          }
+          override(tabContainer, "selectedItem", { get: () => activeTab, set: () => {} });
+          return restore;
+        } catch (_) {
+          restore();
+          return null;
+        }
+      };
+      const releaseSelection = () => {
+        restoreSelection?.();
+        restoreSelection = null;
+        isGuardingTab = false;
+      };
 
       // Helper: resolve tab or split view primary tab
       const resolveTab = (target) => {
@@ -8183,28 +10916,14 @@
 
         const currentActive = window.gBrowser?.selectedTab;
         if (tab !== currentActive && !tab.multiselected) {
+          releaseSelection();
+          restoreSelection = lockSelection(currentActive);
+          if (!restoreSelection) return;
           dragCandidateTab = tab;
           isGuardingTab = true;
           startX = e.clientX;
           startY = e.clientY;
 
-          // Temporarily lock gBrowser.selectedTab and tabContainer.selectedItem
-          // so tab.on_mousedown does NOT switch the active tab on mousedown.
-          if (window.gBrowser) {
-            Object.defineProperty(window.gBrowser, "selectedTab", {
-              get: () => currentActive,
-              set: () => {},
-              configurable: true
-            });
-          }
-
-          if (tabContainer) {
-            Object.defineProperty(tabContainer, "selectedItem", {
-              get: () => currentActive,
-              set: () => {},
-              configurable: true
-            });
-          }
         }
       };
 
@@ -8212,9 +10931,7 @@
       const onMouseUp = (e) => {
         if (isGuardingTab) {
           // Release temporary locks immediately
-          if (window.gBrowser) delete window.gBrowser.selectedTab;
-          if (tabContainer) delete tabContainer.selectedItem;
-          isGuardingTab = false;
+          releaseSelection();
 
           if (dragCandidateTab && dragCandidateTab.isConnected) {
             const moveDist = Math.hypot(e.clientX - startX, e.clientY - startY);
@@ -8231,11 +10948,7 @@
       };
 
       const clearGuard = () => {
-        if (isGuardingTab) {
-          if (window.gBrowser) delete window.gBrowser.selectedTab;
-          if (tabContainer) delete tabContainer.selectedItem;
-          isGuardingTab = false;
-        }
+        releaseSelection();
         dragCandidateTab = null;
       };
 
@@ -8257,6 +10970,7 @@
       window.addEventListener("mouseup", onMouseUp, { capture: true });
       window.addEventListener("dragend", clearGuard, { capture: true });
       window.addEventListener("drop", clearGuard, { capture: true });
+      window.addEventListener("blur", clearGuard, { capture: true });
       window.addEventListener("dragstart", onSplitterDragStart, { capture: true });
       window.addEventListener("mousedown", onSplitterMouseDown, { capture: true });
 
@@ -8304,59 +11018,21 @@
           origStartMap.set(target, orig);
           target.startTabDrag = function(event, tab, options = {}) {
             // Release mousedown lock so startTabDrag can run cleanly
-            if (isGuardingTab) {
-              if (window.gBrowser) delete window.gBrowser.selectedTab;
-              if (tabContainer) delete tabContainer.selectedItem;
-              isGuardingTab = false;
-            }
+            releaseSelection();
 
             const currentActiveTab = window.gBrowser?.selectedTab;
             // A tab or split view is dormant if it is not the currently active tab
             const isDormant = tab && tab !== currentActiveTab && !tab.multiselected;
 
             if (isDormant && window.gBrowser) {
-              // Temporarily isolate selectedElements so Firefox only bundles the dragged tab/split view
-              Object.defineProperty(window.gBrowser, "selectedElements", {
-                get: () => [tab],
-                configurable: true
-              });
-
-              // Temporarily suppress selectedTab and selectedItem setters during startTabDrag
-              Object.defineProperty(window.gBrowser, "selectedTab", {
-                get: () => currentActiveTab,
-                set: () => {},
-                configurable: true
-              });
-
-              if (tabContainer) {
-                Object.defineProperty(tabContainer, "selectedItem", {
-                  get: () => currentActiveTab,
-                  set: () => {},
-                  configurable: true
-                });
-              }
-
+              const unlock = lockSelection(currentActiveTab, tab);
               try {
                 return orig.call(this, event, tab, options);
-              } catch (e) {
-                if (Core.getPref(Constants.DEBUG_PREF)) console.warn("[Zentral] startTabDrag snapshot notice:", e);
-                return true;
               } finally {
-                // Restore native prototype getters and setters immediately
-                delete window.gBrowser.selectedElements;
-                delete window.gBrowser.selectedTab;
-                if (tabContainer) {
-                  delete tabContainer.selectedItem;
-                }
+                unlock?.();
               }
             }
-
-            try {
-              return orig.call(this, event, tab, options);
-            } catch (e) {
-              if (Core.getPref(Constants.DEBUG_PREF)) console.warn("[Zentral] startTabDrag fallback:", e);
-              return true;
-            }
+            return orig.call(this, event, tab, options);
           };
         }
       });
@@ -8412,6 +11088,7 @@
         window.removeEventListener("mouseup", onMouseUp, { capture: true });
         window.removeEventListener("dragend", clearGuard, { capture: true });
         window.removeEventListener("drop", clearGuard, { capture: true });
+        window.removeEventListener("blur", clearGuard, { capture: true });
         window.removeEventListener("dragstart", onSplitterDragStart, { capture: true });
         window.removeEventListener("mousedown", onSplitterMouseDown, { capture: true });
         clearGuard();
@@ -8474,7 +11151,7 @@
       }
       
       tabsToGroup.forEach(tab => { if (tab.pinned) gBrowser.unpinTab(tab); });
-      setTimeout(() => {
+      this.#setTimeout(() => {
         const newGroup = document.createXULElement('tab-group');
         newGroup.id = `${Date.now()}-${Math.round(Math.random() * 100)}`;
         newGroup.label = folder.label || "New Group";
@@ -8566,7 +11243,7 @@
       try {
         const colors = JSON.parse(Core.getPref(Constants.TabGroups.PREF_COLORS));
         if (Object.keys(colors).length > 0) {
-          setTimeout(() => {
+          this.#setTimeout(() => {
             Object.entries(colors).forEach(([id, color]) => {
               const group = document.getElementById(id);
               if (group && !group.hasAttribute("split-view-group")) {
@@ -8600,7 +11277,7 @@
      * Schedules debounced state save for tab groups to prevent excessive disk writes.
      */
     scheduleStateSave() {
-      if (this.#isRestoring) return;
+      if (this.#isRestoring || this.#destroyed) return;
       if (this.#state.saveStateTimer) clearTimeout(this.#state.saveStateTimer);
       this.#state.saveStateTimer = setTimeout(() => this.saveTabGroupState(), 1000);
     }
@@ -8609,6 +11286,7 @@
      * Serializes tab group hierarchy, parent relationships, and collapsed states to user preferences.
      */
     saveTabGroupState() {
+      if (this.#isRestoring || this.#destroyed) return;
       try {
         const ss = this.#getSessionStore();
         const currentWs = window.gZenWorkspaces?.activeWorkspace;
@@ -8654,6 +11332,7 @@
         // Identify live groups currently present in the DOM
         const liveGroups = Array.from(document.querySelectorAll("tab-group:not([split-view-group]):not([zen-split-view]):not([is-zen-split])"));
         const liveGroupIds = new Set(liveGroups.map(g => g.id).filter(Boolean));
+        const otherWindows = this.#getOtherWindowGroupIds();
 
         // 1. Prune groups from existingGroups that belonged to currentWs (or had no workspace) but are no longer in the DOM
         for (const gId of Object.keys(existingGroups)) {
@@ -8661,7 +11340,9 @@
           if (!meta) continue;
           const ws = meta.workspaceId;
           const isCurrentWs = !ws || !currentWs || ws === currentWs;
-          if (isCurrentWs && !liveGroupIds.has(gId)) {
+          // Preferences are shared by every browser window. A local absence
+          // proves deletion only after the other windows have been inspected.
+          if (isCurrentWs && !liveGroupIds.has(gId) && otherWindows.complete && !otherWindows.ids.has(gId)) {
             delete mergedGroups[gId];
             delete mergedTabMapping[gId];
           }
@@ -8792,9 +11473,10 @@
      * Restores saved tab group DOM hierarchy, nestings, and collapsed states from user preferences.
      */
     loadTabGroupState() {
+      if (this.#destroyed) return;
       try {
         const stateStr = Core.getPref(Constants.TabGroups.PREF_STATE);
-        const forceCollapse = Core.getPref(Constants.TabGroups.PREF_COLLAPSE_ON_LAUNCH);
+        const forceCollapse = this.#isRestoring && Core.getPref(Constants.TabGroups.PREF_COLLAPSE_ON_LAUNCH);
         if (!stateStr || stateStr === "{}") return;
         const parsed = JSON.parse(stateStr);
         const state = parsed.groups || parsed;
@@ -8893,6 +11575,8 @@
     constructor() {
       /** @type {Element|null} Reference to modal dialog overlay container */
       this.modal = null;
+      this._destroyed = false;
+      this._reportController = null;
     }
     
     /**
@@ -8904,6 +11588,9 @@
      * Module tear down for Sine hot unloading
      */
     destroy() {
+      this._destroyed = true;
+      this._reportController?.abort();
+      this._reportController = null;
       try {
         Core.log("ZentralSettings", "Destroying Settings module...");
         if (this.modal) {
@@ -9011,6 +11698,7 @@
      * Closes the settings modal dialog.
      */
     close() {
+      this._stopShortcutRecording?.();
       if (this.modal) {
         this.modal.setAttribute("data-open", "false");
         this.modal.style.setProperty("display", "none", "important");
@@ -9161,7 +11849,7 @@
       this.updateMatrixUI(cols, rows);
 
       const animType = Core.getPref(Constants.Apps.PREF_ANIMATION_TYPE, "slide") || "slide";
-      const animSpeed = Core.getPref(Constants.Apps.PREF_ANIMATION_SPEED, 450) || 450;
+      const animSpeed = Core.getPref(Constants.Apps.PREF_ANIMATION_SPEED, 450) ?? 450;
       const maxApps = Core.getPref(Constants.Apps.PREF_MAX_APPS, 21) || 21;
 
       const animDropdown = this.modal.querySelector("#zs-anim-type-dropdown");
@@ -9177,6 +11865,9 @@
       get("zs-max-apps").value = maxApps;
       if (get("zs-hide-utility-section")) {
         get("zs-hide-utility-section").checked = Core.getPref(Constants.Apps.PREF_HIDE_UTILITY_SECTION, false) === true;
+      }
+      if (get("zs-show-app-navbar")) {
+        get("zs-show-app-navbar").checked = Core.getPref(Constants.Apps.PREF_SHOW_NAVBAR, false) === true;
       }
 
       const instaPeekShortcut = Core.getPref(Constants.Apps.PREF_INSTA_PEEK_SHORTCUT, "Alt+Q") || "Alt+Q";
@@ -9223,7 +11914,7 @@
         get("zs-tg-indicator-type").value = indicatorType;
       }
       
-      const opacity = Core.getPref(Constants.TabGroups.PREF_LABEL_OPACITY, 85) || 85;
+      const opacity = Core.getPref(Constants.TabGroups.PREF_LABEL_OPACITY, 85) ?? 85;
       if (get("zs-tg-opacity")) {
         get("zs-tg-opacity").value = opacity;
         if (get("zs-tg-opacity-badge")) get("zs-tg-opacity-badge").textContent = opacity + "%";
@@ -9347,6 +12038,9 @@
       if (get("zs-hide-utility-section")) {
         Core.setPref(Constants.Apps.PREF_HIDE_UTILITY_SECTION, get("zs-hide-utility-section").checked);
       }
+      if (get("zs-show-app-navbar")) {
+        Core.setPref(Constants.Apps.PREF_SHOW_NAVBAR, get("zs-show-app-navbar").checked);
+      }
       Core.setPref(Constants.Apps.PREF_APPS_PER_ROW, parseInt(get("zs-apps-row").value) || 7);
       Core.setPref(Constants.Apps.PREF_MAX_ROWS, parseInt(get("zs-max-rows").value) || 3);
       if (get("zs-insta-peek-shortcut")) {
@@ -9361,7 +12055,8 @@
         Core.setPref(Constants.TabGroups.PREF_INDICATOR_TYPE, get("zs-tg-indicator-type").value);
       }
       if (get("zs-tg-opacity")) {
-        Core.setPref(Constants.TabGroups.PREF_LABEL_OPACITY, parseInt(get("zs-tg-opacity").value) || 85);
+        const opacity = Number.parseInt(get("zs-tg-opacity").value, 10);
+        Core.setPref(Constants.TabGroups.PREF_LABEL_OPACITY, Number.isFinite(opacity) ? Math.max(0, Math.min(100, opacity)) : 85);
       }
 
       if (get("zs-pref-logger-enabled")) {
@@ -9388,17 +12083,6 @@
       }
       
       this.close();
-      if (window.Zentral?.Apps) {
-        window.Zentral.Apps.applyHideUtilitySectionPref();
-        window.Zentral.Apps.repositionGrid();
-        window.Zentral.Apps.updateAutohideState();
-        window.Zentral.Apps.renderGrid();
-      }
-      if (window.Zentral?.TabGroups) {
-        window.Zentral.TabGroups.applyChevronPref();
-        window.Zentral.TabGroups.applyIndicatorTypePref();
-        window.Zentral.TabGroups.applyLabelOpacityPref();
-      }
     }
 
     injectStyles() {
@@ -10842,7 +13526,9 @@
         isRecording = false;
         window.removeEventListener("keydown", onKeyDown, true);
         btn.removeAttribute("data-recording");
+        label.textContent = input.value || "None";
       };
+      this._stopShortcutRecording = stopRecording;
 
       const syncUI = (val) => {
         stopRecording();
@@ -10933,7 +13619,7 @@
         <div class="zs-header">
           <div class="zs-title-group">
             <h2 class="zs-title">bzenital Settings</h2>
-            <span class="zs-version-badge">v1.0.2</span>
+            <span class="zs-version-badge">v${Constants.VERSION}</span>
           </div>
           <div class="zs-header-actions">
             <button id="zs-kofi-btn" class="zs-kofi-btn" title="Support Zentral on Ko-fi (ko-fi.com/michele501st)">
@@ -11028,6 +13714,18 @@
                     </div>
                     <label class="zs-switch">
                       <input type="checkbox" id="zs-hide-utility-section" />
+                      <span class="zs-slider"></span>
+                    </label>
+                  </div>
+
+                  <!-- Show App Panel Navigation Toolbar Toggle -->
+                  <div class="zs-row" id="zs-app-navbar-row">
+                    <div class="zs-label-container">
+                      <span class="zs-label">Show Navigation Toolbar</span>
+                      <span class="zs-sublabel">Back/forward, zoom and URL bar at the top of app panels</span>
+                    </div>
+                    <label class="zs-switch">
+                      <input type="checkbox" id="zs-show-app-navbar" />
                       <span class="zs-slider"></span>
                     </label>
                   </div>
@@ -11381,7 +14079,7 @@
                 <div style="display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: 4px; padding-top: 10px; border-top: 1px solid rgba(255, 255, 255, 0.06);">
                   <div style="display: flex; align-items: center; gap: 10px;">
                     <label class="zs-switch">
-                      <input type="checkbox" id="zs-report-attach-log" checked />
+                      <input type="checkbox" id="zs-report-attach-log" />
                       <span class="zs-slider"></span>
                     </label>
                     <div style="display: flex; flex-direction: column;">
@@ -11682,7 +14380,8 @@
       const opacityBadge = this.modal.querySelector("#zs-tg-opacity-badge");
       if (opacitySlider) {
         opacitySlider.addEventListener("input", (e) => {
-          const val = parseInt(e.target.value, 10) || 85;
+          const parsed = Number.parseInt(e.target.value, 10);
+          const val = Number.isFinite(parsed) ? Math.max(0, Math.min(100, parsed)) : 85;
           if (opacityBadge) opacityBadge.textContent = `${val}%`;
           document.documentElement.style.setProperty("--zentral-tabgroup-label-opacity", (val / 100).toFixed(2));
           document.documentElement.setAttribute("zentral-label-opacity-below-85", val < 85 ? "true" : "false");
@@ -11851,11 +14550,12 @@
 
       if (submitReportBtn && titleInput && descInput) {
         submitReportBtn.addEventListener("click", async () => {
+          if (this._destroyed || submitReportBtn.disabled) return;
           saveDiagnosticsPrefsImmediately();
           const title = titleInput.value.trim();
           const desc = descInput.value.trim();
           const category = categoryInput ? categoryInput.value : "bug";
-          const attachLogs = attachLogCheckbox ? attachLogCheckbox.checked : true;
+          const attachLogs = attachLogCheckbox ? attachLogCheckbox.checked : false;
 
           if (!title) {
             titleInput.focus();
@@ -11867,6 +14567,13 @@
             descInput.focus();
             descInput.style.borderColor = "#ef4444";
             setTimeout(() => { if (descInput) descInput.style.borderColor = ""; }, 2000);
+            return;
+          }
+          if (title.length > 240 || desc.length > 12000) {
+            if (statusEl) {
+              statusEl.style.display = "inline";
+              statusEl.textContent = "Use at most 240 characters for the title and 12,000 for the description.";
+            }
             return;
           }
 
@@ -11883,6 +14590,7 @@
             statusEl.textContent = "Connecting to GitHub...";
           }
 
+          try {
           // 1. Gather diagnostic logs & system metadata
           let logContent = "";
           if (attachLogs) {
@@ -11903,7 +14611,7 @@
           }
 
           const systemInfo = {
-            zentralVersion: "v1.0.2",
+            zentralVersion: `v${Constants.VERSION}`,
             zenVersion: navigator.userAgent,
             platform: navigator.platform || "Desktop",
             windowSize: `${window.innerWidth}x${window.innerHeight}`,
@@ -11912,14 +14620,24 @@
           };
 
           // 2. Attempt background submission to Cloudflare Worker endpoint if configured
-          let endpoint = Core.getPref(Constants.Diagnostics.PREF_REPORT_ENDPOINT)?.trim();
+          let endpoint = Core.getPref(Constants.Diagnostics.PREF_REPORT_ENDPOINT);
+          endpoint = typeof endpoint === "string" ? endpoint.trim() : "";
+          try {
+            const endpointUrl = new URL(endpoint);
+            if (endpointUrl.protocol !== "https:" || endpointUrl.username || endpointUrl.password ||
+                endpointUrl.hostname === "zentral-issue-reporter.michele-pierini.workers.dev") endpoint = "";
+          } catch (_) { endpoint = ""; }
           let submitted = false;
 
           if (endpoint) {
+            const controller = new AbortController();
+            this._reportController = controller;
+            const timeout = setTimeout(() => controller.abort(), 15000);
             try {
               const resp = await fetch(endpoint, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
+                signal: controller.signal,
                 body: JSON.stringify({
                   title,
                   description: desc,
@@ -11928,14 +14646,28 @@
                   logs: sendLogContent
                 })
               });
-
+              if (this._destroyed) return;
               const result = await resp.json();
+              if (this._destroyed) return;
               if (resp.ok && result.success) {
+                const issueUrl = new URL(result.issueUrl);
+                if (issueUrl.origin !== "https://github.com" || issueUrl.username || issueUrl.password ||
+                    !Number.isSafeInteger(result.issueNumber) || result.issueNumber <= 0 ||
+                    !new RegExp(`^/[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+/issues/${result.issueNumber}$`).test(issueUrl.pathname)) {
+                  throw new Error("Reporter returned an invalid issue URL");
+                }
                 submitted = true;
                 if (statusEl) {
                   statusEl.style.display = "inline";
                   statusEl.style.color = "#10b981";
-                  statusEl.innerHTML = `<a href="${result.issueUrl}" target="_blank" style="color: #10b981; text-decoration: underline;">✓ Issue #${result.issueNumber} created!</a>`;
+                  const link = document.createElementNS("http://www.w3.org/1999/xhtml", "a");
+                  link.href = issueUrl.origin + issueUrl.pathname;
+                  link.target = "_blank";
+                  link.rel = "noopener noreferrer";
+                  link.style.color = "#10b981";
+                  link.style.textDecoration = "underline";
+                  link.textContent = `Issue #${result.issueNumber} created!`;
+                  statusEl.replaceChildren(link);
                 }
                 titleInput.value = "";
                 descInput.value = "";
@@ -11943,22 +14675,31 @@
                 console.warn("[Zentral-Report] Worker returned error:", resp.status, result);
               }
             } catch (postErr) {
+              if (this._destroyed) return;
               console.warn("[Zentral-Report] Worker submission failed, falling back to Web:", postErr);
+            } finally {
+              clearTimeout(timeout);
+              if (this._reportController === controller) this._reportController = null;
             }
           }
 
           // 3. Fallback: If not submitted via worker, open pre-filled GitHub issue in new tab & copy logs to clipboard
           if (!submitted) {
+            if (this._destroyed) return;
+            let logsCopied = false;
             if (logContent) {
               try {
                 const clipboardHelper = Cc["@mozilla.org/widget/clipboardhelper;1"]?.getService(Ci.nsIClipboardHelper);
                 if (clipboardHelper) {
                   clipboardHelper.copyString(logContent);
+                  logsCopied = true;
                 } else if (navigator.clipboard?.writeText) {
-                  navigator.clipboard.writeText(logContent);
+                  await navigator.clipboard.writeText(logContent);
+                  logsCopied = true;
                 }
               } catch (_) {}
             }
+            if (this._destroyed) return;
 
             let ghBody = `### 📝 Description\n${desc}\n\n`;
             ghBody += `### 🖥️ Environment\n`;
@@ -11966,14 +14707,14 @@
             ghBody += `- **Zen Build:** ${systemInfo.zenVersion}\n`;
             ghBody += `- **OS / Platform:** ${systemInfo.platform}\n`;
             ghBody += `- **Window / DPR:** ${systemInfo.windowSize} (DPR: ${systemInfo.dpr})\n\n`;
-            if (logContent) {
+            if (logsCopied) {
               ghBody += `*(Diagnostic log copied to your clipboard — paste below if relevant)*\n\n`;
             }
 
-            const ghUrl = `https://github.com/Michele501st/Zentral-Sine/issues/new?title=${encodeURIComponent(`[${category.toUpperCase()}] ${title}`)}&body=${encodeURIComponent(ghBody)}&labels=${encodeURIComponent(category)}`;
+            const ghUrl = `https://github.com/TH0p/BZENITAL/issues/new?title=${encodeURIComponent(`[${category.toUpperCase()}] ${title}`)}&body=${encodeURIComponent(ghBody)}&labels=${encodeURIComponent(category)}`;
             
             if (window.gBrowser?.addTab) {
-              window.gBrowser.addTab(ghUrl, { triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal() });
+              window.gBrowser.selectedTab = window.gBrowser.addTab(ghUrl, { triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal() });
             } else {
               window.open(ghUrl, "_blank");
             }
@@ -11981,14 +14722,23 @@
             if (statusEl) {
               statusEl.style.display = "inline";
               statusEl.style.color = "#60a5fa";
-              statusEl.textContent = logContent ? "✓ Opened in GitHub (Log copied to clipboard!)" : "✓ Opened in GitHub!";
+              statusEl.textContent = logsCopied ? "Opened in GitHub (log copied to clipboard)" : "Opened in GitHub";
             }
           }
-
+          } catch (error) {
+            if (this._destroyed) return;
+            console.error("[Zentral-Report] Could not prepare report:", error);
+            if (statusEl) {
+              statusEl.style.display = "inline";
+              statusEl.style.color = "#ef4444";
+              statusEl.textContent = "Could not prepare the report. Your text was preserved; please try again.";
+            }
+          } finally {
           submitReportBtn.disabled = false;
           submitReportBtn.style.opacity = "1";
           submitReportBtn.style.pointerEvents = "auto";
           submitReportBtn.innerHTML = origBtnHTML;
+          }
         });
       }
 
@@ -12012,6 +14762,7 @@
         if (agCol) agCol.setAttribute("data-placement", "sidebar");
         if (matrixWrapper) matrixWrapper.removeAttribute("data-hidden");
         if (get("zs-hide-utility-section")) get("zs-hide-utility-section").checked = false;
+        if (get("zs-show-app-navbar")) get("zs-show-app-navbar").checked = false;
         const utilityRow = get("zs-utility-section-row");
         if (utilityRow) utilityRow.removeAttribute("data-hidden");
         
@@ -12059,9 +14810,76 @@
     }
   }
 
-  const Apps = new ZentralApps();
-  const TabGroups = new ZentralTabGroups();
+  let Apps = new ZentralApps();
+  let TabGroups = new ZentralTabGroups();
   const Settings = new ZentralSettings();
+  const cleanupLogger = window._zentralLoggerCleanup;
+  let initialized = false;
+  let destroyed = false;
+  let startupObserver = null;
+  let appsRunning = false;
+  let groupsRunning = false;
+  let configPending = false;
+  const changedPrefs = new Set();
+  const stopModule = module => {
+    try { module.destroy?.(); } catch (error) { console.error("[Zentral] Module cleanup failed:", error); }
+  };
+  const startModule = module => {
+    try {
+      module.init();
+      return true;
+    } catch (error) {
+      console.error("[Zentral] Module startup failed:", error);
+      stopModule(module);
+      return false;
+    }
+  };
+
+  const applyConfigChanges = () => {
+    configPending = false;
+    if (destroyed || !initialized) return;
+    const keys = new Set(changedPrefs);
+    changedPrefs.clear();
+
+    const appsEnabled = Core.getPref(Constants.Apps.PREF_ENABLED) !== false;
+    if (appsEnabled !== appsRunning) {
+      if (appsEnabled) {
+        Apps = new ZentralApps();
+        window.Zentral.Apps = Apps;
+        appsRunning = startModule(Apps);
+      } else {
+        stopModule(Apps);
+        appsRunning = false;
+      }
+    }
+    const groupsEnabled = Core.getPref(Constants.TabGroups.PREF_ENABLED) !== false;
+    if (groupsEnabled !== groupsRunning) {
+      if (groupsEnabled) {
+        TabGroups = new ZentralTabGroups();
+        window.Zentral.TabGroups = TabGroups;
+        groupsRunning = startModule(TabGroups);
+      } else {
+        stopModule(TabGroups);
+        groupsRunning = false;
+      }
+    }
+
+    if (appsRunning && [...keys].some(key => key.startsWith("zen.workspace.apps."))) {
+      if (keys.has(Constants.Apps.PREF_SHOW_NAVBAR)) Apps.applyNavbarPref?.();
+      if (keys.has(Constants.Apps.PREF_APPS)) Apps.loadApps?.();
+      if (keys.has(Constants.Apps.PREF_UTILITY_ORDER)) Apps.loadUtilityOrder?.();
+      Apps.applyHideUtilitySectionPref?.();
+      Apps.repositionGrid?.();
+      Apps.updateAutohideState?.();
+      Apps.renderGrid?.();
+      if (Apps.isPanelOpen?.()) Apps.positionPanel?.();
+    }
+    if (groupsRunning) {
+      if (keys.has(Constants.TabGroups.PREF_SHOW_CHEVRON)) TabGroups.applyChevronPref?.();
+      if (keys.has(Constants.TabGroups.PREF_INDICATOR_TYPE)) TabGroups.applyIndicatorTypePref?.();
+      if (keys.has(Constants.TabGroups.PREF_LABEL_OPACITY)) TabGroups.applyLabelOpacityPref?.();
+    }
+  };
 
   /**
    * 6.1 Global Namespace Definition
@@ -12073,17 +14891,37 @@
     TabGroups,
     Settings,
     Init: () => {
-      Core.log("bzenital", "Booting Master Script (v1.0.2)...");
-      Apps.init();
-      TabGroups.init();
-      Settings.init();
+      if (destroyed || initialized) return;
+      Core.init();
+      initialized = true;
+      Core.on("configChanged", ({ key }) => {
+        changedPrefs.add(key);
+        if (configPending) return;
+        configPending = true;
+        queueMicrotask(applyConfigChanges);
+      });
+      Core.log("bzenital", `Booting Master Script (v${Constants.VERSION})...`);
+      appsRunning = startModule(Apps) && Core.getPref(Constants.Apps.PREF_ENABLED) !== false;
+      groupsRunning = startModule(TabGroups) && Core.getPref(Constants.TabGroups.PREF_ENABLED) !== false;
+      startModule(Settings);
       window.ZentralSettingsInstance = Settings;
     },
     Destroy: () => {
+      if (destroyed) return;
+      destroyed = true;
       Core.log("bzenital", "Unloading and destroying bzenital mod...");
-      if (Apps.destroy) Apps.destroy();
-      if (TabGroups.destroy) TabGroups.destroy();
-      if (Settings.destroy) Settings.destroy();
+      window.removeEventListener("unload", performUnload);
+      if (startupObserver) {
+        try { Services.obs.removeObserver(startupObserver, "browser-delayed-startup-finished"); } catch (_) {}
+        startupObserver = null;
+      }
+      Core.destroy();
+      for (const module of [Settings, Apps, TabGroups]) {
+        stopModule(module);
+      }
+      try { cleanupLogger?.(); } catch (error) { console.error("[Zentral] Logger cleanup failed:", error); }
+      changedPrefs.clear();
+      delete window.ZentralSettingsInstance;
       window.ZentralInitialized = false;
       delete window.Zentral;
     }
@@ -12091,13 +14929,12 @@
 
   const performUnload = () => {
     try {
-      if (window.Zentral && window.Zentral.Destroy) {
-        window.Zentral.Destroy();
-      }
+      if (!destroyed) zentral.Destroy();
     } catch(e) {
       console.error("[Zentral] Error during unload destroy:", e);
     }
   };
+  const zentral = window.Zentral;
 
   // Sine Mod engine dynamically unloads scripts
   if (typeof window.addUnloadListener === "function") {
@@ -12116,27 +14953,29 @@
     if (typeof gBrowserInit !== "undefined" && gBrowserInit.delayedStartupFinished) {
       window.Zentral.Init();
     } else {
-      let booted = false;
       const safeBoot = () => {
-        if (booted) return;
-        booted = true;
+        if (destroyed || initialized) return;
         try { 
-          window.Zentral.Init(); 
+          zentral.Init();
         } catch (err) { console.error("[Zentral] Boot error:", err); }
       };
 
       if (typeof Services !== "undefined" && Services.obs) {
-        Services.obs.addObserver(function observer(subject, topic) {
+        startupObserver = function observer(subject, topic) {
           if (topic === "browser-delayed-startup-finished" && subject === window) {
             Services.obs.removeObserver(observer, topic);
+            startupObserver = null;
             safeBoot();
           }
-        }, "browser-delayed-startup-finished", false);
+        };
+        Services.obs.addObserver(startupObserver, "browser-delayed-startup-finished", false);
+      } else {
+        safeBoot();
       }
     }
   } catch (e) {
     console.error("[Zentral] Startup observer error, forcing immediate Init():", e);
-    try { window.Zentral.Init(); } catch (_) {}
+    try { zentral.Init(); } catch (_) {}
   }
 
 })();
