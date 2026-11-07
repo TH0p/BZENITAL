@@ -2,7 +2,7 @@
 // @name           Zentral
 // @description    Unified Apps Grid and Tabs Groups
 // @author         Michele Pierini
-// @version        v2.4.0
+// @version        v2.4.1
 // @include        main
 // ==/UserScript==
 
@@ -64,7 +64,7 @@
    * Zentral Constants shared across modules (Preferences keys, default bounds, etc.)
    */
   const Constants = {
-    VERSION: "2.4.0",
+    VERSION: "2.4.1",
     /**
      * 1.1 Apps Module Preference Keys & Dimension Constraints
      */

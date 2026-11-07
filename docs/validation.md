@@ -7,6 +7,19 @@ preserved fork changes are listed in [upstream-sync.md](upstream-sync.md).
 Final integration checks: 112/112 Node tests passed, all scripts passed syntax
 checks, and the isolated Zen browser smoke test passed.
 
+Version 2.4.1 separates BZENITAL's Sine ID from the original and fixes the update
+route. To test against an installed Sine engine without modifying its profile:
+
+```powershell
+node tools/sine-update-smoke.cjs "<profile-directory>\chrome\JS"
+```
+
+This evaluates the installed Sine manager and URL conversion code with intercepted
+network/archive operations. Two consecutive updates must keep the fork's homepage
+and download source, never request upstream files, and retain a distinct ID from
+the original. The previous `main` manifest reproduced the upstream redirect; the
+fixed manifest passed using Sine 2.3.4.1c.
+
 ## Scope and checks
 
 Run `npm test` for the regression suite and `npm run check` for script syntax.

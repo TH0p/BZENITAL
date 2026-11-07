@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="theme.json"><img src="https://img.shields.io/badge/Version-v2.4.0-4A72FF.svg?style=flat-square" alt="Version"></a>
+  <a href="theme.json"><img src="https://img.shields.io/badge/Version-v2.4.1-4A72FF.svg?style=flat-square" alt="Version"></a>
   <a href="https://zen-browser.app/"><img src="https://img.shields.io/badge/Zen_Browser-Compatible-9B51E0.svg?style=flat-square" alt="Zen Browser"></a>
   <a href="theme.json"><img src="https://img.shields.io/badge/Sine_Engine-Native_Mod-00C853.svg?style=flat-square" alt="Sine Engine"></a>
   <a href="https://ko-fi.com/michele501st"><img src="https://img.shields.io/badge/Support-Ko--fi-FF5E5B.svg?style=flat-square&logo=ko-fi&logoColor=white" alt="Support on Ko-fi"></a>
@@ -180,13 +180,27 @@ Zentral includes a telemetry and diagnostics subsystem:
 
 1. Locate your Zen Browser profile directory (`about:support` → **Profile Folder** → *Open Folder*).
 2. Inside the profile, create or navigate to `chrome/sine-mods/`.
-3. Clone or extract this repository into a folder named `zentral`:
+3. Clone or extract this repository into a folder named `bzenital`:
    ```bash
-   git clone https://github.com/TH0p/BZENITAL.git "<profile-directory>/chrome/sine-mods/zentral"
+   git clone https://github.com/TH0p/BZENITAL.git "<profile-directory>/chrome/sine-mods/bzenital"
    ```
 4. Open Zen Browser and enable **Zentral** in your Sine Mod manager.
 
 ---
+
+### Updating BZENITAL without reverting to Zentral
+
+BZENITAL has its own Sine ID, `bzenital`. Its update source (`homepage`) is
+`https://github.com/TH0p/BZENITAL`; the original project's source is kept only
+as upstream attribution. Sine uses the homepage saved in its installed mod registry,
+so old installations with the original homepage cannot receive this fix by updating
+that old entry.
+
+If an update previously changed BZENITAL into Zentral, disable the old Zentral
+entry and install BZENITAL once through Sine using the repository URL above.
+Keep the original disabled to avoid loading both mods together. Existing app and
+group preferences retain the same keys. Subsequent updates of the new BZENITAL
+entry come from this fork.
 
 ## Development and validation
 
