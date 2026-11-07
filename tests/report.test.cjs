@@ -25,7 +25,7 @@ function report({ endpoint = '', response, logger, fetchImpl } = {}) {
     submitReportBtn: button, titleInput, descInput, statusEl: status,
     categoryInput: { value: 'bug' }, attachLogCheckbox: { checked: true },
     saveDiagnosticsPrefsImmediately() {},
-    Core: { getPref: () => endpoint, log() {} }, Constants: { VERSION: '2.4.2', Diagnostics: { PREF_REPORT_ENDPOINT: 'endpoint' } },
+    Core: { getPref: () => endpoint, log() {} }, Constants: { VERSION: '2.4.3', Diagnostics: { PREF_REPORT_ENDPOINT: 'endpoint' } },
     window: {
       ZentralLogger: logger,
       innerWidth: 1000, innerHeight: 800, devicePixelRatio: 1,
@@ -58,7 +58,7 @@ test('An unconfigured reporter opens a draft in the fork without sending logs to
   assert.equal(env.requests.length, 0);
   const url = new URL(env.tabs[0]);
   assert.equal(url.origin + url.pathname, 'https://github.com/TH0p/BZENITAL/issues/new');
-  assert.match(url.searchParams.get('body'), /2\.4\.2/);
+  assert.match(url.searchParams.get('body'), /2\.4\.3/);
 });
 
 test('Worker response URLs cannot inject markup into the privileged settings window', async () => {
