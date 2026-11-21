@@ -3876,3 +3876,467 @@ html:root[zentral-unit-closing="true"][zentral-apps-autohide="true"][zentral-app
 html:root:not([zentral-app-panel-open]) #zentral-apps-vb-settings-btn { display: none !important; }
 html:root:not([zentral-app-panel-open]) #zentral-apps-vertical-bar-footer:not(:has(> :not(#zentral-apps-vb-settings-btn))) { display: none !important; }
 html:root[zentral-app-panel-open] #zentral-apps-vertical-bar-footer { margin-top: auto !important; }
+
+/* ==========================================================================
+ * SPEE D theme: Settings modal + Apps grid / Apps Bar
+ * Dark frosted glass (same language as the SPEE D new tab): translucent gray
+ * plates with heavy blur, thin white edge, no shadow or reflection, very round
+ * corners, pills and circles, Urbanist with light headings, spring motion.
+ * Placed last so it wins over the base rules above and the injected sheets.
+ * ========================================================================== */
+@font-face {
+  font-family: "Urbanist";
+  src: url("fonts/Urbanist-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  --spd-text: #f4f4f6;
+  --spd-text-soft: rgb(244 244 246 / .72);
+  --spd-text-muted: rgb(244 244 246 / .52);
+  --spd-accent: #f4f4f6;
+  --spd-on-accent: #111113;
+  --spd-glass: rgb(30 30 34 / .4);
+  --spd-glass-hover: rgb(48 48 54 / .44);
+  --spd-glass-strong: rgb(22 22 25 / .62);
+  --spd-chip: rgb(255 255 255 / .08);
+  --spd-chip-hover: rgb(255 255 255 / .14);
+  --spd-edge: rgb(255 255 255 / .07);
+  --spd-section: rgb(255 255 255 / .045);
+  --spd-blur: blur(56px) saturate(170%);
+  --spd-blur-light: blur(28px) saturate(160%);
+  --spd-font: "Urbanist", -apple-system, "Segoe UI Variable", "Segoe UI", sans-serif;
+  --spd-ease-spring: linear(0, 0.0451, 0.1531, 0.2916, 0.4376, 0.576, 0.6982, 0.7999, 0.8803, 0.9407, 0.9835, 1.0117, 1.0283, 1.0364, 1.0384, 1.0364, 1.0322, 1.0268, 1.0212, 1.0159, 1.0113, 1.0074, 1.0044, 1.0021, 1.0005, 0.9995, 0.9989, 0.9986, 0.9985, 0.9986, 0.9988, 0.999, 0.9992, 0.9994, 0.9996, 0.9997, 0.9998, 0.9999, 1);
+  --spd-ease-hover: cubic-bezier(.2, .8, .2, 1);
+  --spd-ease-cinematic: cubic-bezier(.23, 1, .32, 1);
+  --spd-hover: 380ms;
+  --spd-control: 280ms;
+}
+
+/* ---------- Settings: backdrop and dialog ---------- */
+:root #zentral-settings-modal {
+  background: rgb(6 6 8 / .6) !important;
+  backdrop-filter: blur(18px) !important;
+  font-family: var(--spd-font) !important;
+  font-weight: 450 !important;
+  letter-spacing: .005em !important;
+  -moz-osx-font-smoothing: grayscale;
+}
+:root #zentral-settings-modal :is(button, input, textarea, select) {
+  font-family: inherit !important;
+  letter-spacing: inherit !important;
+}
+:root #zentral-settings-modal[data-open="true"] {
+  animation: spdFade 240ms var(--spd-ease-hover) !important;
+}
+:root #zentral-settings-modal .zs-dialog {
+  background: var(--spd-glass-strong) !important;
+  backdrop-filter: var(--spd-blur) !important;
+  color: var(--spd-text) !important;
+  border: 1px solid var(--spd-edge) !important;
+  border-radius: 40px !important;
+  box-shadow: none !important;
+  animation: spdModalIn 560ms var(--spd-ease-spring) !important;
+}
+@keyframes spdFade { from { opacity: 0; } }
+@keyframes spdModalIn {
+  from { opacity: 0; transform: scale(.96) translateY(10px); filter: blur(6px); }
+  60% { filter: blur(0); }
+}
+
+/* Header: big light title, version as a quiet chip */
+:root #zentral-settings-modal .zs-header {
+  background: transparent !important;
+  border-bottom: none !important;
+  padding: 30px 34px 18px !important;
+}
+:root #zentral-settings-modal .zs-title {
+  font-size: 34px !important;
+  font-weight: 300 !important;
+  letter-spacing: -.025em !important;
+  line-height: 1.05 !important;
+  color: var(--spd-text) !important;
+}
+:root #zentral-settings-modal .zs-version-badge {
+  font-family: var(--spd-font) !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  padding: 5px 11px !important;
+  background: var(--spd-chip) !important;
+  border: none !important;
+  color: var(--spd-text-soft) !important;
+  font-variant-numeric: tabular-nums;
+}
+:root #zentral-settings-modal .zs-kofi-btn {
+  border-radius: 999px !important;
+  overflow: hidden !important;
+  opacity: .82;
+  transition: opacity var(--spd-hover) var(--spd-ease-hover), scale var(--spd-hover) var(--spd-ease-hover) !important;
+}
+:root #zentral-settings-modal .zs-kofi-btn:hover { opacity: 1; }
+:root #zentral-settings-modal .zs-kofi-btn:active { scale: .96; }
+
+/* Close: glass circle */
+:root #zentral-settings-modal .zs-close-btn {
+  width: 44px !important;
+  height: 44px !important;
+  border-radius: 50% !important;
+  background: var(--spd-chip) !important;
+  border: none !important;
+  color: var(--spd-text) !important;
+  transition: background var(--spd-hover) var(--spd-ease-hover), scale 140ms var(--spd-ease-cinematic) !important;
+}
+:root #zentral-settings-modal .zs-close-btn:hover { background: var(--spd-chip-hover) !important; }
+:root #zentral-settings-modal .zs-close-btn:active { scale: .96 !important; transform: none !important; }
+
+/* Tabs: segmented pill, active one filled */
+:root #zentral-settings-modal .zs-tab-bar {
+  background: transparent !important;
+  border-bottom: none !important;
+  padding: 0 34px 18px !important;
+  gap: 6px !important;
+}
+:root #zentral-settings-modal .zs-tab-btn {
+  height: 40px !important;
+  padding: 0 18px !important;
+  border-radius: 999px !important;
+  background: var(--spd-chip) !important;
+  color: var(--spd-text-soft) !important;
+  font-size: 14px !important;
+  font-weight: 500 !important;
+  border: none !important;
+  transition: background var(--spd-hover) var(--spd-ease-hover), color var(--spd-hover) var(--spd-ease-hover) !important;
+}
+:root #zentral-settings-modal .zs-tab-btn:hover { background: var(--spd-chip-hover) !important; color: var(--spd-text) !important; }
+:root #zentral-settings-modal .zs-tab-btn[data-active="true"] {
+  background: var(--spd-accent) !important;
+  color: var(--spd-on-accent) !important;
+  font-weight: 600 !important;
+}
+:root #zentral-settings-modal .zs-tab-btn[data-active="true"]::after { display: none !important; }
+
+/* Body: two glass sections */
+:root #zentral-settings-modal .zs-body { padding: 0 34px !important; background: transparent !important; }
+:root #zentral-settings-modal .zs-tab-panel { background: transparent !important; }
+:root #zentral-settings-modal .zs-columns { gap: 14px !important; }
+:root #zentral-settings-modal .zs-col,
+:root #zentral-settings-modal #zs-panel-diagnostics {
+  background: var(--spd-section) !important;
+  border-radius: 28px !important;
+  padding: 22px !important;
+  border: none !important;
+  scrollbar-width: thin;
+  scrollbar-color: #ffffff30 transparent;
+}
+:root #zentral-settings-modal .zs-col { border-right: none !important; border-left: none !important; }
+:root #zentral-settings-modal .zs-section-header {
+  background: transparent !important;
+  border-bottom: none !important;
+  padding-bottom: 0 !important;
+  margin-bottom: 14px !important;
+}
+:root #zentral-settings-modal .zs-section-title {
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  letter-spacing: .01em !important;
+  text-transform: none !important;
+  color: var(--spd-text-muted) !important;
+}
+:root #zentral-settings-modal .zs-toggle-status { color: var(--spd-text-muted) !important; font-size: 13px !important; }
+:root #zentral-settings-modal .zs-row { min-height: 44px !important; }
+:root #zentral-settings-modal .zs-label {
+  color: var(--spd-text) !important;
+  font-size: 15px !important;
+  font-weight: 500 !important;
+}
+:root #zentral-settings-modal .zs-sublabel {
+  color: var(--spd-text-muted) !important;
+  font-size: 13px !important;
+  line-height: 1.45 !important;
+}
+
+/* Switches: 52x32 pill, white when on, spring knob */
+:root #zentral-settings-modal .zs-switch { width: 52px !important; height: 32px !important; }
+:root #zentral-settings-modal .zs-slider {
+  border-radius: 999px !important;
+  background: rgb(255 255 255 / .14) !important;
+  border: none !important;
+  box-shadow: none !important;
+  transition: background var(--spd-control) ease !important;
+}
+:root #zentral-settings-modal .zs-slider:before {
+  width: 24px !important;
+  height: 24px !important;
+  left: 4px !important;
+  top: 4px !important;
+  bottom: auto !important;
+  border-radius: 50% !important;
+  background: var(--spd-text) !important;
+  box-shadow: none !important;
+  transition: transform 340ms var(--spd-ease-spring), background var(--spd-control) ease !important;
+}
+:root #zentral-settings-modal .zs-switch input:checked + .zs-slider { background: var(--spd-accent) !important; }
+:root #zentral-settings-modal .zs-switch input:checked + .zs-slider:before {
+  transform: translateX(20px) !important;
+  background: var(--spd-on-accent) !important;
+}
+:root #zentral-settings-modal .zs-switch input:focus-visible + .zs-slider { outline: 2px solid var(--spd-text-soft) !important; outline-offset: 2px !important; }
+
+/* Placement cards and matrix cells */
+:root #zentral-settings-modal .zs-placement-btn {
+  background: var(--spd-chip) !important;
+  border: 1px solid transparent !important;
+  border-radius: 24px !important;
+  box-shadow: none !important;
+  transition: background var(--spd-hover) var(--spd-ease-hover), border-color var(--spd-hover) var(--spd-ease-hover), scale 140ms var(--spd-ease-cinematic) !important;
+}
+:root #zentral-settings-modal .zs-placement-btn:hover { background: var(--spd-chip-hover) !important; }
+:root #zentral-settings-modal .zs-placement-btn:active { scale: .97; }
+:root #zentral-settings-modal .zs-placement-btn[data-active="true"] {
+  background: var(--spd-chip-hover) !important;
+  border-color: rgb(255 255 255 / .22) !important;
+}
+:root #zentral-settings-modal .zs-placement-btn .zs-placement-svg-box { border-radius: 14px !important; border-color: var(--spd-edge) !important; }
+:root #zentral-settings-modal .zs-placement-label { font-size: 14px !important; font-weight: 500 !important; color: var(--spd-text-muted) !important; }
+:root #zentral-settings-modal .zs-placement-btn[data-active="true"] .zs-placement-label { color: var(--spd-text) !important; }
+:root #zentral-settings-modal .zs-matrix-wrapper,
+:root #zentral-settings-modal .zs-anim-preview-box,
+:root #zentral-settings-modal .zs-modules-subgroup,
+:root #zentral-settings-modal #zs-issue-report-card {
+  background: var(--spd-chip) !important;
+  border: none !important;
+  border-radius: 24px !important;
+  box-shadow: none !important;
+}
+:root #zentral-settings-modal .zs-matrix-title { font-size: 15px !important; font-weight: 500 !important; color: var(--spd-text) !important; }
+:root #zentral-settings-modal .zs-matrix-cell {
+  border-radius: 10px !important;
+  background: rgb(255 255 255 / .05) !important;
+  border: 1px solid transparent !important;
+  transition: background 200ms var(--spd-ease-hover), scale 400ms var(--spd-ease-spring) !important;
+}
+:root #zentral-settings-modal .zs-matrix-cell[data-hover="true"] { background: rgb(255 255 255 / .16) !important; }
+:root #zentral-settings-modal .zs-matrix-cell[data-selected="true"] { background: rgb(244 244 246 / .82) !important; border-color: transparent !important; }
+:root #zentral-settings-modal .zs-matrix-cell[data-selected="true"][data-hover="true"] { background: var(--spd-accent) !important; }
+:root #zentral-settings-modal :is(.zs-matrix-badge, .zs-mono-badge, .zs-matrix-readout) {
+  font-family: var(--spd-font) !important;
+  font-variant-numeric: tabular-nums;
+  border: none !important;
+  border-radius: 999px !important;
+  background: var(--spd-chip) !important;
+  color: var(--spd-text-soft) !important;
+  font-weight: 500 !important;
+}
+
+/* Steppers, selects, inputs: pills */
+:root #zentral-settings-modal .zs-h-stepper {
+  border: none !important;
+  border-radius: 999px !important;
+  background: var(--spd-chip) !important;
+  padding: 3px !important;
+}
+:root #zentral-settings-modal .zs-h-btn {
+  border-radius: 50% !important;
+  background: transparent !important;
+  border: none !important;
+  color: var(--spd-text) !important;
+}
+:root #zentral-settings-modal .zs-h-btn:hover { background: var(--spd-chip-hover) !important; }
+:root #zentral-settings-modal .zs-h-val { font-size: 16px !important; font-weight: 400 !important; font-variant-numeric: tabular-nums; color: var(--spd-text) !important; background: transparent !important; border: none !important; }
+:root #zentral-settings-modal .zs-custom-select-trigger,
+:root #zentral-settings-modal .zs-shortcut-btn,
+:root #zentral-settings-modal .zs-text-input,
+:root #zentral-settings-modal #zs-btn-choose-path,
+:root #zentral-settings-modal #zs-btn-clear-path {
+  min-height: 44px !important;
+  border: 1px solid transparent !important;
+  border-radius: 999px !important;
+  background: var(--spd-chip) !important;
+  color: var(--spd-text) !important;
+  box-shadow: none !important;
+  font-size: 14px !important;
+  transition: background var(--spd-hover) var(--spd-ease-hover), border-color var(--spd-hover) var(--spd-ease-hover) !important;
+}
+:root #zentral-settings-modal :is(.zs-custom-select-trigger, .zs-shortcut-btn, #zs-btn-choose-path, #zs-btn-clear-path) { padding: 0 18px !important; }
+:root #zentral-settings-modal .zs-text-input { padding: 0 20px !important; }
+:root #zentral-settings-modal :is(.zs-custom-select-trigger, .zs-shortcut-btn, #zs-btn-choose-path, #zs-btn-clear-path):hover,
+:root #zentral-settings-modal .zs-custom-select[data-open="true"] .zs-custom-select-trigger { background: var(--spd-chip-hover) !important; }
+:root #zentral-settings-modal .zs-shortcut-btn[data-recording="true"] {
+  background: var(--spd-accent) !important;
+  color: var(--spd-on-accent) !important;
+}
+:root #zentral-settings-modal .zs-textarea-input {
+  border: 1px solid transparent !important;
+  border-radius: 24px !important;
+  background: var(--spd-chip) !important;
+  color: var(--spd-text) !important;
+  padding: 16px 20px !important;
+  font-size: 14px !important;
+}
+:root #zentral-settings-modal :is(.zs-text-input, .zs-textarea-input):focus {
+  border-color: rgb(244 244 246 / .4) !important;
+  background: var(--spd-chip-hover) !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+:root #zentral-settings-modal :is(.zs-text-input, .zs-textarea-input)::placeholder { color: var(--spd-text-muted) !important; opacity: 1 !important; }
+:root #zentral-settings-modal .zs-custom-select-menu {
+  background: var(--spd-glass-strong) !important;
+  backdrop-filter: var(--spd-blur) !important;
+  border: 1px solid var(--spd-edge) !important;
+  border-radius: 24px !important;
+  box-shadow: none !important;
+  padding: 6px !important;
+}
+:root #zentral-settings-modal .zs-custom-select-option {
+  border-radius: 999px !important;
+  min-height: 40px !important;
+  padding: 0 14px !important;
+  color: var(--spd-text-soft) !important;
+}
+:root #zentral-settings-modal .zs-custom-select-option:hover { background: var(--spd-chip) !important; color: var(--spd-text) !important; }
+:root #zentral-settings-modal .zs-custom-select-option[data-selected="true"] {
+  background: var(--spd-chip-hover) !important;
+  color: var(--spd-text) !important;
+}
+:root #zentral-settings-modal .zs-sublabel span[style*="border-radius"] {
+  background: var(--spd-chip) !important;
+  border: none !important;
+  border-radius: 6px !important;
+}
+
+/* Range: 6px track, 22px white thumb */
+:root #zentral-settings-modal .zs-range-slider {
+  -moz-appearance: none !important;
+  appearance: none !important;
+  height: 6px !important;
+  border-radius: 6px !important;
+  background: rgb(255 255 255 / .12) !important;
+  accent-color: var(--spd-accent);
+}
+:root #zentral-settings-modal .zs-range-slider::-moz-range-track { height: 6px; border-radius: 6px; background: transparent; }
+:root #zentral-settings-modal .zs-range-slider::-moz-range-progress { height: 6px; border-radius: 6px; background: var(--spd-accent); }
+:root #zentral-settings-modal .zs-range-slider::-moz-range-thumb {
+  width: 22px; height: 22px; border: 0; border-radius: 50%;
+  background: var(--spd-accent);
+  transition: scale var(--spd-control) var(--spd-ease-cinematic);
+}
+:root #zentral-settings-modal .zs-range-slider:active::-moz-range-thumb { scale: 1.12; }
+
+/* Buttons: pills. Primary white, secondary glass chip, cancel as text */
+:root #zentral-settings-modal .zs-footer {
+  background: transparent !important;
+  border-top: none !important;
+  padding: 22px 34px 30px !important;
+  gap: 8px !important;
+}
+:root #zentral-settings-modal .zs-btn-save,
+:root #zentral-settings-modal .zs-btn-cancel,
+:root #zentral-settings-modal .zs-reset-btn {
+  min-height: 48px !important;
+  padding: 0 22px !important;
+  border: none !important;
+  border-radius: 999px !important;
+  font-size: 15px !important;
+  font-weight: 500 !important;
+  box-shadow: none !important;
+  transition: background var(--spd-hover) var(--spd-ease-hover), color var(--spd-hover) var(--spd-ease-hover), scale var(--spd-hover) var(--spd-ease-hover) !important;
+}
+:root #zentral-settings-modal .zs-btn-save {
+  background: var(--spd-accent) !important;
+  color: var(--spd-on-accent) !important;
+  font-weight: 600 !important;
+}
+:root #zentral-settings-modal .zs-btn-save:hover { background: #fff !important; }
+:root #zentral-settings-modal .zs-btn-cancel { background: transparent !important; color: var(--spd-text-soft) !important; }
+:root #zentral-settings-modal .zs-btn-cancel:hover { color: var(--spd-text) !important; background: transparent !important; }
+:root #zentral-settings-modal .zs-reset-btn { background: var(--spd-chip) !important; color: var(--spd-text) !important; }
+:root #zentral-settings-modal .zs-reset-btn:hover { background: var(--spd-chip-hover) !important; }
+:root #zentral-settings-modal :is(.zs-btn-save, .zs-btn-cancel, .zs-reset-btn):active { scale: .96 !important; transform: none !important; }
+/* In-row buttons (Export, Submit Report, folder) stay compact */
+:root #zentral-settings-modal .zs-section-content :is(.zs-btn-save, .zs-reset-btn),
+:root #zentral-settings-modal #zs-panel-diagnostics :is(.zs-btn-save, .zs-reset-btn) {
+  min-height: 40px !important;
+  padding: 0 18px !important;
+  font-size: 14px !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root #zentral-settings-modal,
+  :root #zentral-settings-modal .zs-dialog { animation: none !important; }
+  :root #zentral-settings-modal * { transition-duration: 1ms !important; }
+}
+
+/* Keyboard focus stays visible on every pill and circle */
+:root #zentral-settings-modal :is(button, .zs-tab-btn, .zs-placement-btn, .zs-custom-select-trigger, .zs-shortcut-btn, .zs-h-btn):focus-visible,
+:root #zen-apps-sidebar-grid .zen-app-tile:focus-visible {
+  outline: 2px solid var(--spd-text-soft) !important;
+  outline-offset: 2px !important;
+}
+:root #zentral-settings-modal .zs-range-slider:focus-visible::-moz-range-thumb { outline: 2px solid var(--spd-text-soft); outline-offset: 2px; }
+
+/* Reduced transparency: solid plates instead of glass */
+@media (prefers-reduced-transparency: reduce) {
+  :root #zentral-settings-modal .zs-dialog,
+  :root #zentral-settings-modal .zs-custom-select-menu { background: #1a1a1d !important; backdrop-filter: none !important; }
+  :root[zentral-apps-placement="vertical-bar"] #zentral-apps-vertical-bar#zentral-apps-vertical-bar { background: #1a1a1d !important; backdrop-filter: none !important; }
+}
+
+/* ---------- Apps grid (sidebar) and Apps Bar ---------- */
+/* Doubled ids outrank the many placement/autohide rules above. Each app sits in a
+ * glass squircle, like the SPEE D icon boxes. */
+#zen-apps-sidebar-grid#zen-apps-sidebar-grid .zen-app-tile:not(.zen-app-vb-footer-btn) {
+  border-radius: 9px !important;
+  background-color: var(--spd-chip) !important;
+  border: 1px solid transparent !important;
+  box-shadow: none !important;
+  transition: background-color var(--spd-hover) var(--spd-ease-hover), border-color var(--spd-hover) var(--spd-ease-hover), scale 520ms var(--spd-ease-spring), opacity 160ms ease !important;
+}
+#zen-apps-sidebar-grid#zen-apps-sidebar-grid .zen-app-tile:not(.zen-app-vb-footer-btn):hover {
+  background-color: var(--spd-chip-hover) !important;
+  transform: none !important;
+}
+#zen-apps-sidebar-grid#zen-apps-sidebar-grid .zen-app-tile:not(.zen-app-vb-footer-btn):active { scale: .96; transform: none !important; }
+#zen-apps-sidebar-grid#zen-apps-sidebar-grid .zen-app-tile :is(img, svg) { border-radius: 5px !important; }
+#zen-apps-sidebar-grid#zen-apps-sidebar-grid .zen-app-tile[data-loaded="true"] :is(img, svg) { filter: saturate(118%) !important; }
+#zen-apps-sidebar-grid#zen-apps-sidebar-grid .zen-app-tile[data-active="true"] {
+  background-color: rgb(244 244 246 / .2) !important;
+  border-color: rgb(244 244 246 / .28) !important;
+  box-shadow: none !important;
+}
+#zen-apps-sidebar-grid#zen-apps-sidebar-grid .zen-app-tile[data-active="true"] :is(img, svg) { filter: none !important; }
+#zen-apps-sidebar-grid#zen-apps-sidebar-grid .zen-app-tile.zen-app-add-btn {
+  background-color: transparent !important;
+  border: 1px dashed rgb(255 255 255 / .16) !important;
+}
+#zen-apps-sidebar-grid#zen-apps-sidebar-grid .zen-app-tile.zen-app-add-btn:hover { background-color: var(--spd-chip) !important; border-style: solid !important; border-color: transparent !important; }
+#zen-apps-sidebar-grid#zen-apps-sidebar-grid .zen-app-tile.zen-app-add-btn svg { transition: rotate 620ms var(--spd-ease-spring) !important; }
+#zen-apps-sidebar-grid#zen-apps-sidebar-grid .zen-app-tile.zen-app-add-btn:hover svg { rotate: 90deg; }
+#zen-apps-sidebar-grid#zen-apps-sidebar-grid.zen-apps-horizontal .zen-app-tile { border-radius: 8px !important; }
+#zen-apps-sidebar-grid#zen-apps-sidebar-grid .zen-app-badge {
+  font-family: var(--spd-font) !important;
+  font-weight: 700 !important;
+  font-variant-numeric: tabular-nums;
+  background: var(--spd-accent) !important;
+  color: var(--spd-on-accent) !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+/* Apps Bar: one glass plate */
+:root[zentral-apps-placement="vertical-bar"] #zentral-apps-vertical-bar#zentral-apps-vertical-bar {
+  background: var(--spd-glass) !important;
+  backdrop-filter: var(--spd-blur-light) !important;
+  border: 1px solid var(--spd-edge) !important;
+  border-radius: 22px !important;
+  box-shadow: none !important;
+}
+:root[zentral-apps-placement="vertical-bar"] #zentral-apps-vertical-bar#zentral-apps-vertical-bar .zen-app-tile:not(.zen-app-vb-footer-btn) { border-radius: 12px !important; }
+
+@media (prefers-reduced-motion: reduce) {
+  #zen-apps-sidebar-grid#zen-apps-sidebar-grid .zen-app-tile,
+  #zen-apps-sidebar-grid#zen-apps-sidebar-grid .zen-app-tile.zen-app-add-btn svg { transition-duration: 1ms !important; }
+  #zen-apps-sidebar-grid#zen-apps-sidebar-grid .zen-app-tile:not(.zen-app-vb-footer-btn):hover { scale: none !important; }
+}
