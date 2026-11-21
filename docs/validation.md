@@ -36,6 +36,17 @@ A disposable Zen 1.24.1b profile reproduced the old 0px/4px gaps and measured
 8px after the correction in all four combinations of mode and side. All
 112 Node tests, syntax checks and the isolated Zen smoke test passed.
 
+Version 2.4.4 fixes fifteen defects found in a code review: autohide grids that
+never collapsed while the mouse kept moving, the add-app limit counting other
+workspaces, sidebar collapse measured on the content area, badges lost on pref
+reload, app browsers configured before insertion, tabs pulled out of groups
+whenever the app panel was open, years read as unread counts, group close
+racing the async native removal, drag hooks left on instances after unload,
+oversized GitHub report URLs, settings previews surviving Cancel, native group
+editors hidden with Tab Groups disabled, n/w resizes moving the opposite edge,
+Alt+L swallowed with logging off, and unfiltered logger observers. 116 Node
+tests and syntax checks passed; it was not yet run in a Zen profile.
+
 ## Scope and checks
 
 Run `npm test` for the regression suite and `npm run check` for script syntax.

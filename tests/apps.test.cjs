@@ -484,3 +484,15 @@ test('saving an invalid navbar address preserves the previous app URL', () => {
   h.instance.navUpdateAppUrl();
   assert.equal(JSON.parse(h.prefs.get('zen.workspace.apps.sidebar.apps'))[0].url, 'https://example.com');
 });
+
+test('badge parsing ignores years and numbers inside page titles', () => {
+  const h = harness();
+  const parse = title => JSON.parse(JSON.stringify(h.instance.extractBadgeFromTitle(title)));
+  assert.deepEqual(parse('(3) WhatsApp'), { hasNotification: true, notifCount: 3 });
+  assert.deepEqual(parse('Inbox (12) - me@example.com - Gmail'), { hasNotification: true, notifCount: 12 });
+  assert.deepEqual(parse('Caixa de entrada (4) - Gmail'), { hasNotification: true, notifCount: 4 });
+  for (const title of ['Top Hits (2024) - YouTube Music', 'RFC [9110]', 'Messages 2023 archive', 'Video (2) part one']) {
+    assert.equal(parse(title).hasNotification, false, title);
+  }
+});
+

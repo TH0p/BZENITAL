@@ -2,7 +2,7 @@
 // @name         Zentral-Logger
 // @description  Comprehensive diagnostic logger for Zentral (Apps Grid, Tab Groups, Settings & Layout Renderings).
 // @author       Michele Pierini
-// @version      v2.4.3
+// @version      v2.4.4
 // @include      main
 // ==/UserScript==
 
@@ -554,16 +554,18 @@
 
   function setupLayoutObservers() {
     // 1. Root & Sidebar Layout Attribute Observer
+    const rootLayoutAttrs = ["zen-right-side", "zen-sidebar-collapsed", "zen-single-toolbar", "zentral-label-opacity-below-85"];
     const rootObserver = new MutationObserver((mutations) => {
       if (!isLoggerEnabled()) return;
       for (const m of mutations) {
-        if (["zen-right-side", "zen-sidebar-collapsed", "zen-single-toolbar", "zentral-label-opacity-below-85"].includes(m.attributeName)) {
+        if (rootLayoutAttrs.includes(m.attributeName)) {
           const val = document.documentElement.getAttribute(m.attributeName);
           ZentralLogger.layout("Root", `Attribute "${m.attributeName}" -> "${val}"`);
         }
       }
     });
-    rootObserver.observe(document.documentElement, { attributes: true });
+    // Filtered: Zentral and Zen change many root attributes, only these are logged.
+    rootObserver.observe(document.documentElement, { attributes: true, attributeFilter: rootLayoutAttrs });
     cleanupObservers.push(() => rootObserver.disconnect());
 
     // 2. Apps Grid Observer
@@ -607,7 +609,7 @@
       }
     });
     if (tabContainer) {
-      tabGroupObserver.observe(tabContainer, { childList: true, subtree: true, attributes: true, attributeFilter: ["collapsed", "label", "style", "class"] });
+      tabGroupObserver.observe(tabContainer, { childList: true, subtree: true, attributes: true, attributeFilter: ["collapsed", "label"] });
       cleanupObservers.push(() => tabGroupObserver.disconnect());
     }
   }
@@ -996,7 +998,10 @@
   // Shortcut Exporter: Alt + L
   // -------------------------------------------------------------------------
   const onKeyDown = (e) => {
-    if (!e.altKey || (e.key !== "l" && e.key !== "L")) return;
+    if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || e.repeat || e.defaultPrevented) return;
+    if (e.code !== "KeyL" && e.key !== "l" && e.key !== "L") return;
+    // With logging off, leave Alt+L to the page and other handlers (no modal alert).
+    if (!isLoggerEnabled()) return;
     e.preventDefault();
     e.stopImmediatePropagation();
     exportLog();
@@ -1166,6 +1171,6 @@
     cleanupObservers.push(() => window.removeEventListener("DOMContentLoaded", setupDiagnostics));
   }
 
-  ZentralLogger.log("Zentral-Logger", "Zentral-Logger v2.4.3 initialized with clean format & deduplication. Press Alt+L to export logs.");
+  ZentralLogger.log("Zentral-Logger", "Zentral-Logger v2.4.4 initialized with clean format & deduplication. Press Alt+L to export logs.");
 
 })();

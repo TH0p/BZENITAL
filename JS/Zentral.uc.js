@@ -2,7 +2,7 @@
 // @name           Zentral
 // @description    Unified Apps Grid and Tabs Groups
 // @author         Michele Pierini
-// @version        v2.4.3
+// @version        v2.4.4
 // @include        main
 // ==/UserScript==
 
@@ -64,7 +64,7 @@
    * Zentral Constants shared across modules (Preferences keys, default bounds, etc.)
    */
   const Constants = {
-    VERSION: "2.4.3",
+    VERSION: "2.4.4",
     /**
      * 1.1 Apps Module Preference Keys & Dimension Constraints
      */
@@ -758,7 +758,20 @@
       }
 
       if (bounds) {
-        return this.clampRect({ x, y, w, h }, bounds, { minW, minH }, { allowOverflow: true, minVisibleMargin: 80 });
+        const c = this.clampRect({ x, y, w, h }, bounds, { minW, minH }, { allowOverflow: true, minVisibleMargin: 80 });
+        // Clamping can shift the whole rect; keep the edge opposite an n/w handle anchored.
+        if (dir.includes("n")) {
+          const bottom = startRect.y + startRect.h;
+          const top = Math.max(bounds.top, Math.min(y, bottom - minH));
+          c.h = Math.round(Math.max(minH, Math.min(bottom - top, Math.max(minH, bounds.height))));
+          c.y = Math.round(bottom - c.h);
+        }
+        if (dir.includes("w")) {
+          const right = startRect.x + startRect.w;
+          c.w = Math.round(Math.max(minW, Math.min(right - x, Math.max(minW, bounds.width))));
+          c.x = Math.round(right - c.w);
+        }
+        return c;
       }
       return { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h) };
     },
@@ -1295,6 +1308,7 @@
         const parsed = JSON.parse(str);
         if (Array.isArray(parsed)) {
           const previousApps = this.#state.apps;
+          const previousById = new Map(previousApps.map(app => [app.id, app]));
           const seenIds = new Set();
           this.#state.apps = parsed
             .filter(a => {
@@ -1309,11 +1323,19 @@
               if (a.mobile === undefined) a.mobile = false;
               if (a.flipSide === undefined) a.flipSide = false;
               if (typeof a.zoom !== "number" || isNaN(a.zoom)) a.zoom = 1;
+              // Runtime-only badge state is not persisted; carry it over from the old object.
+              const prev = previousById.get(a.id);
+              if (prev) {
+                if (prev.hasNotification !== undefined) a.hasNotification = prev.hasNotification;
+                if (prev.notificationCount !== undefined) a.notificationCount = prev.notificationCount;
+                if (prev.badgeCount !== undefined) a.badgeCount = prev.badgeCount;
+              }
               return a;
             });
+          const currentById = new Map(this.#state.apps.map(app => [app.id, app]));
           for (const [id, browser] of this.#state.appBrowsers) {
-            const previous = previousApps.find(app => app.id === id);
-            const current = this.#state.apps.find(app => app.id === id);
+            const previous = previousById.get(id);
+            const current = currentById.get(id);
             if (!current || previous?.url !== current.url) {
               if (this.#state.activeAppId === id) this.closePanel();
               this.#disposeAppBrowser(id);
@@ -1566,17 +1588,18 @@
       if (collapsedAttr === "true") return true;
 
       // Compact mode: sidebar is visually collapsed but pref says expanded.
-      // Detect by measuring physical width of the tab/sidebar container.
-      const sidebarBox = document.getElementById("tabbrowser-tabbox") ||
+      // Detect by measuring physical width of the sidebar (Zen's vertical navigator-toolbox).
+      // #tabbrowser-tabbox is the web-content area and must not be measured here.
+      const sidebarBox = window.gNavToolbox ||
+                         document.getElementById("navigator-toolbox") ||
                          document.getElementById("sidebar-box") ||
-                         document.getElementById("sidebar-container") ||
                          gBrowser?.tabContainer;
       if (sidebarBox) {
         const rect = sidebarBox.getBoundingClientRect();
-        // Sidebar is considered collapsed if its width is narrower than COLLAPSED_WIDTH_THRESHOLD
+        // Collapsed if narrower than COLLAPSED_WIDTH_THRESHOLD. A 0 width is a transient/hidden
+        // layout (fullscreen, mid-transition), not a collapsed sidebar.
         const T = Constants.Apps.COLLAPSED_WIDTH_THRESHOLD;
         if (rect.width > 0 && rect.width < T) return true;
-        if (rect.width === 0) return true;
       }
 
       // Also check via single-toolbar indicator
@@ -3464,7 +3487,7 @@
                   this.#state.autohideCollapseTimer = null;
                 }
               } else {
-                this.scheduleAutohideCollapse(250);
+                this.armAutohideCollapse(250);
               }
             }
             return;
@@ -3505,15 +3528,13 @@
               this.#state.autohideCollapseTimer = null;
             }
           } else if (isNearTopEdge) {
-            // Hovering near top edge: refresh collapse timer
-            this.scheduleAutohideCollapse(260);
-            this.scheduleUtilityCollapse(260);
+            // Hovering near top edge: arm collapse timer
+            this.armAutohideCollapse(260, true);
           } else {
             // Cursor is outside grid and outside top buffer (e.g. webpage, top bar, lower sidebar)
             const isRevealed = grid.hasAttribute("data-revealed") || this.#dom.utilitySection?.hasAttribute("data-utility-revealed");
             if (isRevealed) {
-              this.scheduleAutohideCollapse(260);
-              this.scheduleUtilityCollapse(260);
+              this.armAutohideCollapse(260, true);
             }
           }
         };
@@ -4051,6 +4072,18 @@
     }
 
     /**
+     * Arms the collapse timers without pushing back one that is already pending.
+     * Used from mousemove so continuous movement outside the grid still collapses it.
+     * @param {number} delay - Delay in milliseconds.
+     * @param {boolean} [withUtility=false] - Also arm the utility section timer.
+     */
+    armAutohideCollapse(delay, withUtility = false) {
+      this.cancelAutohideReveal();
+      if (!this.#state.autohideCollapseTimer) this.scheduleAutohideCollapse(delay);
+      if (withUtility && !this.#state.utilityCollapseTimer) this.scheduleUtilityCollapse(delay);
+    }
+
+    /**
      * Renders the draggable buttons (Settings, Autohide) inside the Apps Grid Utility Section.
      * Supports free slot positioning across all grid columns.
      */
@@ -4306,12 +4339,7 @@
       this.#dom.grid.style.setProperty("--zentral-max-rows", maxRows);
 
       const maxApps = Core.getPref(Constants.Apps.PREF_MAX_APPS);
-      const activeWorkspaceId = window.gZenWorkspaces?.activeWorkspace;
-      const visibleApps = this.#state.apps.filter(app => {
-        if (!app.workspaceId || app.workspaceId === "all") return true;
-        if (activeWorkspaceId && app.workspaceId === activeWorkspaceId) return true;
-        return false;
-      });
+      const visibleApps = this.#getWorkspaceVisibleApps();
       const activeApps = visibleApps.slice(0, maxApps);
 
       const hideUtility = Core.getPref(Constants.Apps.PREF_HIDE_UTILITY_SECTION, false) === true;
@@ -4520,8 +4548,21 @@
       });
     }
 
+    /** Apps shown in the active workspace (same rule renderGrid uses for the cap). */
+    #getWorkspaceVisibleApps() {
+      const activeWorkspaceId = window.gZenWorkspaces?.activeWorkspace;
+      return this.#state.apps.filter(app =>
+        !app.workspaceId || app.workspaceId === "all" ||
+        (activeWorkspaceId && app.workspaceId === activeWorkspaceId)
+      );
+    }
+
     addApp(url, title, icon) {
-      if (this.#state.apps.length >= Core.getPref(Constants.Apps.PREF_MAX_APPS)) return;
+      const maxApps = Core.getPref(Constants.Apps.PREF_MAX_APPS);
+      if (this.#getWorkspaceVisibleApps().length >= maxApps) {
+        console.warn(`[Zentral] App limit reached (${maxApps}); raise "Max apps" in settings to add more.`);
+        return;
+      }
       const id = "app_" + Date.now() + "_" + Math.floor(Math.random() * 1000);
       const crispIcon = url.startsWith("http") ? `page-icon:${url}` : (icon || `page-icon:${url}`);
       const cleanTitle = this.formatAppDisplayName(title, url);
@@ -4547,6 +4588,13 @@
       
       this.renderGrid();
       this.updateVerticalBarBounds();
+    }
+
+    /** True if the given <browser> is one of the app panel browsers. */
+    isAppBrowser(browser) {
+      if (!browser) return false;
+      for (const b of this.#state.appBrowsers.values()) if (b === browser) return true;
+      return false;
     }
 
     isPanelOpen() {
@@ -5039,11 +5087,17 @@
       if (!title || typeof title !== "string") return { hasNotification: false, notifCount: null };
       const trimmed = title.trim();
 
-      const numMatch = trimmed.match(/\((\d+)\+?\)/) ||
-                       trimmed.match(/\[(\d+)\+?\]/) ||
-                       trimmed.match(/\b(\d+)\s+unread\b/i) ||
-                       trimmed.match(/\b(?:messages?|notif(?:ication)?s?)\s*[:(]?\s*(\d+)/i) ||
-                       trimmed.match(/(?:^|\s)[\u2022\u25cf\u25cb]\s*(\d+)/);
+      // Counts only where web apps put them: at the start ("(3) WhatsApp", "[2] Chat") or right
+      // after a short folder name ("Inbox (12) - Gmail", "Caixa de entrada (4) - ..."). An
+      // unanchored match would read years or numbers in page titles as unread counts.
+      const folderMatch = trimmed.match(/^(?:[^\s()[\]]+\s+){1,3}\((\d{1,4})\+?\)(?=\s*(?:[-\u2013\u2014|\u00b7:]|$))/);
+      const folderCount = folderMatch ? parseInt(folderMatch[1], 10) : NaN;
+      const isLikelyYear = folderCount >= 1900 && folderCount <= 2100;
+      const numMatch = trimmed.match(/^[([](\d{1,4})\+?[)\]]/) ||
+                       (folderMatch && !isLikelyYear ? folderMatch : null) ||
+                       trimmed.match(/^(\d{1,4})\s+unread\b/i) ||
+                       trimmed.match(/^(?:messages?|notif(?:ication)?s?)\s*[:(]\s*(\d{1,4})/i) ||
+                       trimmed.match(/^[\u2022\u25cf\u25cb]\s*(\d{1,4})\b/);
 
       if (numMatch && numMatch[1]) {
         const count = parseInt(numMatch[1], 10);
@@ -5162,7 +5216,12 @@
       b.style.cssText = "width: 100%; height: 100%; flex: 1; border: none; overflow: hidden;";
       b.style.display = "none";
 
-      try { b.customUserAgent = ua; } catch (_) {}
+      // Insert first: webProgress and browsingContext only exist once the browser is
+      // connected, so the progress listener, UA and zoom below would silently fail otherwise.
+      this.#dom.panel.appendChild(b);
+      this.#state.appBrowsers.set(app.id, b);
+
+      try { if (b.browsingContext) b.browsingContext.customUserAgent = ua; } catch (_) {}
 
       const zoom = (typeof app.zoom === "number" && !isNaN(app.zoom)) ? app.zoom : 1;
       if (zoom !== 1) {
@@ -5276,8 +5335,6 @@
       listen("pageshow", () => { if (getCurrentApp()) this.setAppLoading(appId, false); });
       listen("DOMContentLoaded", () => { if (getCurrentApp()) this.setAppLoading(appId, false); });
 
-      this.#dom.panel.appendChild(b);
-      this.#state.appBrowsers.set(app.id, b);
       const matchingTiles = document.querySelectorAll(`.zen-app-tile[data-app-id="${app.id}"]`);
       matchingTiles.forEach(t => t.dataset.loaded = "true");
       this.ensureBadgeSyncLoop();
@@ -7410,9 +7467,9 @@
       Services.prefs.addObserver("zen.view.use-single-toolbar", this.#layoutObserver, false);
       Services.prefs.addObserver("zen.view.sidebar-expanded", this.#layoutObserver, false);
 
-      const sidebarBox = document.getElementById("tabbrowser-tabbox") ||
-                         document.getElementById("sidebar-box") ||
-                         document.getElementById("sidebar-container");
+      const sidebarBox = window.gNavToolbox ||
+                         document.getElementById("navigator-toolbox") ||
+                         document.getElementById("sidebar-box");
       if (sidebarBox && typeof ResizeObserver !== "undefined") {
         let lastWidth = sidebarBox.getBoundingClientRect().width;
         this.#resizeObs = new ResizeObserver((entries) => {
@@ -7739,6 +7796,7 @@
         document.documentElement.removeAttribute("zentral-indicator-type");
         document.documentElement.removeAttribute("zentral-label-opacity-below-85");
         document.documentElement.removeAttribute("zen-renaming-group");
+        document.documentElement.removeAttribute("zentral-tabgroups-active");
         document.documentElement.style.removeProperty("--zentral-tabgroup-label-opacity");
         document.getElementById("tabbrowser-tabs")?.removeAttribute("zentral-sidebar-collapsed");
 
@@ -8354,6 +8412,8 @@
         return;
       }
       this.#initialized = true;
+      // chrome.css only hides native group editors/menus while this module is active.
+      document.documentElement.setAttribute("zentral-tabgroups-active", "true");
       this.#isRestoring = true;
       this.clearStoredColorData();
       this.loadSavedColors();
@@ -8913,6 +8973,23 @@
         panel?.hasAttribute("open") || false;
     }
 
+    /**
+     * True only when the new tab actually comes from an app panel browser: its opener is an
+     * app browser, or focus is inside the open app panel. A tab opened from the main window
+     * while the panel happens to be open keeps its normal group placement.
+     */
+    #isTabFromAppPanel(aParams) {
+      if (!this.#isAppPanelActive()) return false;
+      const apps = window.Zentral?.Apps;
+      const opener = aParams?.openerBrowser;
+      if (opener && typeof apps?.isAppBrowser === "function") return apps.isAppBrowser(opener);
+      const panel = document.getElementById("zen-app-panel-root");
+      const focused = document.commandDispatcher?.focusedElement || document.activeElement;
+      return !!(panel && focused && panel.contains(focused));
+    }
+
+    #addingAppTab = false;
+
     #isolateAppTab(tab) {
       if (this.#isolatedAppTabs.has(tab)) return;
       const inheritedGroups = new Set([
@@ -8959,9 +9036,8 @@
         const tab = e.target;
         if (!tab || tab.tagName?.toLowerCase() !== "tab") return;
 
-        // 1. App Panel Isolation: If link was opened while an App panel is open, keep outside any group
-        const isAppPanelOpen = this.#isAppPanelActive() || this.#isolatedAppTabs.has(tab);
-        if (isAppPanelOpen) {
+        // 1. App Panel Isolation: tabs opened from an App panel stay outside any group
+        if (this.#addingAppTab || this.#isolatedAppTabs.has(tab)) {
           this.#isolateAppTab(tab);
           return;
         }
@@ -9038,7 +9114,7 @@
       const self = this;
 
       window.gBrowser.addTab = function(aURI, aParams = {}) {
-        const isAppOpen = self.#isAppPanelActive();
+        const isAppOpen = self.#isTabFromAppPanel(aParams);
 
         if (isAppOpen && aParams && typeof aParams === "object") {
           aParams.tabGroup = null;
@@ -9046,7 +9122,13 @@
           aParams.insertRelatedAfterCurrent = false;
         }
 
-        const tab = self.#origAddTab.call(this, aURI, aParams);
+        let tab;
+        self.#addingAppTab = isAppOpen;
+        try {
+          tab = self.#origAddTab.call(this, aURI, aParams);
+        } finally {
+          self.#addingAppTab = false;
+        }
 
         if (isAppOpen && tab) {
           self.#isolateAppTab(tab);
@@ -9839,16 +9921,7 @@
         this.#listen(closeButton, "click", (event) => {
           event.stopPropagation();
           event.preventDefault();
-          try {
-            this.removeSavedColor(group.id);
-            if (typeof gBrowser?.removeTabGroup === "function") {
-              try { gBrowser.removeTabGroup(group); } catch (_) {}
-            }
-          } catch (error) {
-            console.error("[ZentralTabGroups] Error removing tab group:", error);
-          }
-          try { group.remove(); } catch (_) {}
-          this.scheduleStateSave();
+          this.#closeGroup(group);
         });
       }
 
@@ -10053,14 +10126,7 @@
 
               if (!confirmed) return;
 
-              try {
-                this.removeSavedColor(grp.id);
-                if (typeof gBrowser?.removeTabGroup === "function") {
-                  try { gBrowser.removeTabGroup(grp); } catch (_) {}
-                }
-              } catch (_) {}
-              try { grp.remove(); } catch (_) {}
-              this.scheduleStateSave();
+              this.#closeGroup(grp);
             }
           });
         }
@@ -10993,12 +11059,26 @@
         window.TabDragAndDrop?.prototype
       ].filter(t => t && typeof t._getDragTarget === "function");
 
+      // Remembers whether each hooked method was an own property, so unhooking can delete the
+      // override on instances (falling back to the prototype) instead of pinning a stale wrapper.
+      const hookRecord = (map, target, key) => {
+        map.set(target, { key, own: Object.prototype.hasOwnProperty.call(target, key), orig: target[key] });
+        return target[key];
+      };
+      const unhookAll = (map) => {
+        [...map].reverse().forEach(([target, { key, own, orig }]) => {
+          if (own) target[key] = orig; else delete target[key];
+        });
+        map.clear();
+      };
+      // Skip a target whose method is only inherited from a target already hooked (avoids double wrapping).
+      const inheritsHooked = (list, i, key) => list.slice(0, i).some(p => p.isPrototypeOf(list[i]) && !Object.prototype.hasOwnProperty.call(list[i], key));
+
       const origDragTargetMap = new Map();
 
-      dndTargets.forEach(target => {
-        if (!origDragTargetMap.has(target)) {
-          const orig = target._getDragTarget;
-          origDragTargetMap.set(target, orig);
+      dndTargets.forEach((target, i) => {
+        if (!origDragTargetMap.has(target) && !inheritsHooked(dndTargets, i, "_getDragTarget")) {
+          const orig = hookRecord(origDragTargetMap, target, "_getDragTarget");
           target._getDragTarget = function(event, options) {
             const res = orig.call(this, event, options);
             if (res) {
@@ -11024,10 +11104,9 @@
 
       const origStartMap = new Map();
 
-      targets.forEach(target => {
-        if (!origStartMap.has(target)) {
-          const orig = target.startTabDrag;
-          origStartMap.set(target, orig);
+      targets.forEach((target, i) => {
+        if (!origStartMap.has(target) && !inheritsHooked(targets, i, "startTabDrag")) {
+          const orig = hookRecord(origStartMap, target, "startTabDrag");
           target.startTabDrag = function(event, tab, options = {}) {
             // Release mousedown lock so startTabDrag can run cleanly
             releaseSelection();
@@ -11104,14 +11183,8 @@
         window.removeEventListener("dragstart", onSplitterDragStart, { capture: true });
         window.removeEventListener("mousedown", onSplitterMouseDown, { capture: true });
         clearGuard();
-        origDragTargetMap.forEach((orig, target) => {
-          target._getDragTarget = orig;
-        });
-        origDragTargetMap.clear();
-        origStartMap.forEach((orig, target) => {
-          target.startTabDrag = orig;
-        });
-        origStartMap.clear();
+        unhookAll(origDragTargetMap);
+        unhookAll(origStartMap);
         if (origAdoptTabGroup && window.gBrowser) {
           window.gBrowser.adoptTabGroup = origAdoptTabGroup;
         }
@@ -11274,6 +11347,27 @@
      * Removes a stored color entry for a deleted tab group.
      * @param {string} groupId - Unique tab group ID string.
      */
+    /**
+     * Closes a tab group and its tabs. Waits for the native (async) removal so a cancelled
+     * beforeunload prompt keeps both the group and its saved color.
+     * @param {Element} grp - The tab-group element.
+     */
+    async #closeGroup(grp) {
+      const groupId = grp.id;
+      if (typeof gBrowser?.removeTabGroup === "function") {
+        try {
+          await gBrowser.removeTabGroup(grp, { isUserTriggered: true });
+        } catch (error) {
+          console.error("[ZentralTabGroups] Error removing tab group:", error);
+        }
+      } else {
+        try { grp.remove(); } catch (_) {}
+      }
+      if (this.#destroyed) return;
+      if (!grp.isConnected) this.removeSavedColor(groupId);
+      this.scheduleStateSave();
+    }
+
     async removeSavedColor(groupId) {
       try {
         const colors = JSON.parse(Core.getPref(Constants.TabGroups.PREF_COLORS));
@@ -11707,10 +11801,33 @@
     }
 
     /**
+     * Puts root styles previewed live by the modal (label opacity, indicator type) back to the
+     * saved prefs. After a save the prefs already match, so this is a no-op then.
+     */
+    _revertLivePreviews() {
+      const root = document.documentElement;
+      const tabGroups = window.Zentral?.TabGroups;
+      const groupsEnabled = Core.getPref(Constants.TabGroups.PREF_ENABLED) !== false;
+      if (groupsEnabled && typeof tabGroups?.applyLabelOpacityPref === "function") {
+        try {
+          tabGroups.applyLabelOpacityPref();
+          tabGroups.applyIndicatorTypePref?.();
+        } catch (_) {}
+      } else {
+        try {
+          root.style?.removeProperty("--zentral-tabgroup-label-opacity");
+          root.removeAttribute("zentral-label-opacity-below-85");
+          root.removeAttribute("zentral-indicator-type");
+        } catch (_) {}
+      }
+    }
+
+    /**
      * Closes the settings modal dialog.
      */
     close() {
       this._stopShortcutRecording?.();
+      this._revertLivePreviews();
       if (this.modal) {
         this.modal.setAttribute("data-open", "false");
         this.modal.style.setProperty("display", "none", "important");
@@ -14698,33 +14815,48 @@
           // 3. Fallback: If not submitted via worker, open pre-filled GitHub issue in new tab & copy logs to clipboard
           if (!submitted) {
             if (this._destroyed) return;
-            let logsCopied = false;
-            if (logContent) {
+            const copyToClipboard = async (text) => {
               try {
                 const clipboardHelper = Cc["@mozilla.org/widget/clipboardhelper;1"]?.getService(Ci.nsIClipboardHelper);
-                if (clipboardHelper) {
-                  clipboardHelper.copyString(logContent);
-                  logsCopied = true;
-                } else if (navigator.clipboard?.writeText) {
-                  await navigator.clipboard.writeText(logContent);
-                  logsCopied = true;
-                }
+                if (clipboardHelper) { clipboardHelper.copyString(text); return true; }
+                if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(text); return true; }
               } catch (_) {}
-            }
-            if (this._destroyed) return;
+              return false;
+            };
 
-            let ghBody = `### 📝 Description\n${desc}\n\n`;
-            ghBody += `### 🖥️ Environment\n`;
-            ghBody += `- **Zentral Version:** ${systemInfo.zentralVersion}\n`;
-            ghBody += `- **Zen Build:** ${systemInfo.zenVersion}\n`;
-            ghBody += `- **OS / Platform:** ${systemInfo.platform}\n`;
-            ghBody += `- **Window / DPR:** ${systemInfo.windowSize} (DPR: ${systemInfo.dpr})\n\n`;
-            if (logsCopied) {
-              ghBody += `*(Diagnostic log copied to your clipboard — paste below if relevant)*\n\n`;
+            let envBlock = `### 🖥️ Environment\n`;
+            envBlock += `- **Zentral Version:** ${systemInfo.zentralVersion}\n`;
+            envBlock += `- **Zen Build:** ${systemInfo.zenVersion}\n`;
+            envBlock += `- **OS / Platform:** ${systemInfo.platform}\n`;
+            envBlock += `- **Window / DPR:** ${systemInfo.windowSize} (DPR: ${systemInfo.dpr})\n\n`;
+            const fullBody = `### 📝 Description\n${desc}\n\n` + envBlock;
+
+            const buildUrl = (body) => `https://github.com/TH0p/BZENITAL/issues/new?title=${encodeURIComponent(`[${category.toUpperCase()}] ${title}`)}&body=${encodeURIComponent(body)}&labels=${encodeURIComponent(category)}`;
+            // GitHub rejects very long prefilled URLs; past this, the full report goes to the clipboard.
+            const MAX_URL_LENGTH = 7000;
+            const logNote = `*(Diagnostic log copied to your clipboard — paste below if relevant)*\n\n`;
+            let ghUrl = buildUrl(logContent ? fullBody + logNote : fullBody);
+            let reportCopied = false;
+            let logsCopied = false;
+
+            if (ghUrl.length > MAX_URL_LENGTH) {
+              const fence = "```";
+              const fullReport = logContent ? `${fullBody}### Diagnostic log\n${fence}\n${logContent}\n${fence}\n` : fullBody;
+              reportCopied = await copyToClipboard(fullReport);
+              if (this._destroyed) return;
+              // Truncate on code points so no surrogate pair or %XX escape is split.
+              const shortDesc = Array.from(desc).slice(0, 1500).join("") + "…";
+              const note = reportCopied
+                ? `*(Report too long for a link — the full report is in your clipboard, paste it here)*\n\n`
+                : `*(Report too long for a link — description truncated)*\n\n`;
+              ghUrl = buildUrl(`### 📝 Description\n${shortDesc}\n\n${note}` + envBlock);
+              if (ghUrl.length > MAX_URL_LENGTH) ghUrl = buildUrl(note + envBlock);
+            } else if (logContent) {
+              logsCopied = await copyToClipboard(logContent);
+              if (this._destroyed) return;
+              if (!logsCopied) ghUrl = buildUrl(fullBody);
             }
 
-            const ghUrl = `https://github.com/TH0p/BZENITAL/issues/new?title=${encodeURIComponent(`[${category.toUpperCase()}] ${title}`)}&body=${encodeURIComponent(ghBody)}&labels=${encodeURIComponent(category)}`;
-            
             if (window.gBrowser?.addTab) {
               window.gBrowser.selectedTab = window.gBrowser.addTab(ghUrl, { triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal() });
             } else {
@@ -14734,7 +14866,8 @@
             if (statusEl) {
               statusEl.style.display = "inline";
               statusEl.style.color = "#60a5fa";
-              statusEl.textContent = logsCopied ? "Opened in GitHub (log copied to clipboard)" : "Opened in GitHub";
+              statusEl.textContent = reportCopied ? "Opened in GitHub (full report copied to clipboard)"
+                : logsCopied ? "Opened in GitHub (log copied to clipboard)" : "Opened in GitHub";
             }
           }
           } catch (error) {

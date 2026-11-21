@@ -410,10 +410,27 @@ test('a panel closing animation does not isolate newly opened browser tabs', () 
   assert.equal(moves, 0);
 });
 
+test('a tab opened from the main window while the app panel is open keeps its group', () => {
+  const h = harness();
+  h.window.Zentral = { Apps: { isPanelOpen: () => true, isAppBrowser: () => false } };
+  const group = new Element('tab-group'); group.id = 'g1';
+  const tab = new Element('tab'); group.appendChild(tab);
+  let moves = 0;
+  h.gBrowser.moveTabToEnd = () => moves++;
+  h.groups.setupTabOpenHandler();
+  h.gBrowser.addTab = () => { h.tabContainer.fire('TabOpen', { target: tab }); return tab; };
+  h.groups.hookAddTab();
+  h.gBrowser.addTab('about:blank', { openerBrowser: {} });
+  for (const [id, callback] of [...h.timers]) { h.timers.delete(id); callback(); }
+  assert.equal(moves, 0);
+  assert.equal(tab.parentElement, group);
+});
+
 for (const entry of ['hook', 'TabOpen']) {
   test(`${entry} isolation never undoes a newly assigned native tab group`, () => {
     const h = harness();
-    h.window.Zentral = { Apps: { isPanelOpen: () => true } };
+    const appBrowser = {};
+    h.window.Zentral = { Apps: { isPanelOpen: () => true, isAppBrowser: b => b === appBrowser } };
     const original = new Element('tab-group'); original.id = 'original';
     const explicit = new Element('tab-group'); explicit.id = 'explicit';
     const outside = new Element('tabs');
@@ -422,10 +439,11 @@ for (const entry of ['hook', 'TabOpen']) {
     h.gBrowser.moveTabToEnd = node => { moves++; outside.appendChild(node); };
     if (entry === 'hook') {
       h.gBrowser.addTab = () => tab;
-      h.groups.hookAddTab(); h.gBrowser.addTab('about:blank');
     } else {
-      h.groups.setupTabOpenHandler(); h.tabContainer.fire('TabOpen', { target: tab });
+      h.groups.setupTabOpenHandler();
+      h.gBrowser.addTab = () => { h.tabContainer.fire('TabOpen', { target: tab }); return tab; };
     }
+    h.groups.hookAddTab(); h.gBrowser.addTab('about:blank', { openerBrowser: appBrowser });
     assert.equal(moves, 1);
     explicit.appendChild(tab); tab.setAttribute('data-zentral-group-id', 'explicit');
     for (const [id, callback] of [...h.timers]) { h.timers.delete(id); callback(); }

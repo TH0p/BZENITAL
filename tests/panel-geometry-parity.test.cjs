@@ -65,6 +65,20 @@ for (const [name, geometry] of implementations) {
     }
   });
 
+  test(`${name}: bounded n/w resizes keep the opposite edge fixed`, () => {
+    const bounds = { left: 0, top: 40, width: 1200, height: 800 };
+    const rect = { x: 400, y: 100, w: 400, h: 400 };
+    const n = plain(geometry.computeResize('n', rect, 0, -200, {}, bounds));
+    assert.equal(n.y, 40);
+    assert.equal(n.y + n.h, 500);
+    const nw = plain(geometry.computeResize('nw', rect, -100, -200, {}, bounds));
+    assert.equal(nw.x + nw.w, 800);
+    assert.equal(nw.y + nw.h, 500);
+    const w = plain(geometry.computeResize('w', rect, 300, 0, {}, bounds));
+    assert.equal(w.w, 320);
+    assert.equal(w.x + w.w, 800);
+  });
+
   test(`${name}: controls flip to a reachable side near either window edge`, () => {
     const bounds = { left: 0, width: 1200 };
     assert.equal(geometry.pickPillSide({ x: -100, w: 400 }, bounds, 44, 'left'), 'right');

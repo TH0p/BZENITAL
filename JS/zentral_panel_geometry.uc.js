@@ -332,7 +332,20 @@
     }
 
     if (bounds) {
-      return clampRect({ x, y, w, h }, bounds, { minW, minH }, { allowOverflow: true, minVisibleMargin: 80 });
+      const c = clampRect({ x, y, w, h }, bounds, { minW, minH }, { allowOverflow: true, minVisibleMargin: 80 });
+      // Clamping can shift the whole rect; keep the edge opposite an n/w handle anchored.
+      if (dir.includes("n")) {
+        const bottom = startRect.y + startRect.h;
+        const top = Math.max(bounds.top, Math.min(y, bottom - minH));
+        c.h = Math.round(Math.max(minH, Math.min(bottom - top, Math.max(minH, bounds.height))));
+        c.y = Math.round(bottom - c.h);
+      }
+      if (dir.includes("w")) {
+        const right = startRect.x + startRect.w;
+        c.w = Math.round(Math.max(minW, Math.min(right - x, Math.max(minW, bounds.width))));
+        c.x = Math.round(right - c.w);
+      }
+      return c;
     }
 
     return {

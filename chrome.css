@@ -1186,15 +1186,15 @@ html[zen-sidebar-collapsed="true"] tab-group > .tab-group-label-container::after
 /* --------------------------------------------------------------------------
  * Suppress Native Firefox/Zen Tab Group Editor Popups
  * -------------------------------------------------------------------------- */
-#tab-group-editor,
-#tabgroup-editor-panel,
-#tabGroupEditor,
-tabgroup-editor-panel,
-.tab-group-editor,
-#tabGroupContextMenu,
-tabgroup-meu,
-panel[id*="tab-group-editor"],
-panel[id*="tabgroup-editor"] {
+:root[zentral-tabgroups-active] #tab-group-editor,
+:root[zentral-tabgroups-active] #tabgroup-editor-panel,
+:root[zentral-tabgroups-active] #tabGroupEditor,
+:root[zentral-tabgroups-active] tabgroup-editor-panel,
+:root[zentral-tabgroups-active] .tab-group-editor,
+:root[zentral-tabgroups-active] #tabGroupContextMenu,
+:root[zentral-tabgroups-active] tabgroup-menu,
+:root[zentral-tabgroups-active] panel[id*="tab-group-editor"],
+:root[zentral-tabgroups-active] panel[id*="tabgroup-editor"] {
   display: none !important;
   visibility: hidden !important;
   opacity: 0 !important;
@@ -1214,10 +1214,8 @@ panel[id*="tabgroup-editor"] {
 /* --------------------------------------------------------------------------
  * Context Menu: Suppress Closed Groups from 'Add Tab to Group' Submenu
  * -------------------------------------------------------------------------- */
-#context_moveTabToSavedGroup,
-#open-tab-groups-separator-lower,
-#context_moveTabToGroupPopupMenu > #context_moveTabToSavedGroup,
-#context_moveTabToGroupPopupMenu > #open-tab-groups-separator-lower {
+:root[zentral-tabgroups-active] #context_moveTabToSavedGroup,
+:root[zentral-tabgroups-active] #open-tab-groups-separator-lower {
   display: none !important;
 }
 
